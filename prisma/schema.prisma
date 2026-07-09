@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Chat {
+  id              String           @id @default(cuid())
+  title           String
+  status          String           @default("ACTIVE")
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  messages        Message[]
+  uploadedFiles   UploadedFile[]
+  agentRuns       AgentRun[]
+  agentSteps      AgentStep[]
+  toolCalls       ToolCall[]
+  actionProposals ActionProposal[]
+}
+
+model Message {
+  id            String         @id @default(cuid())
+  chatId        String
+  role          String
+  content       String
+  metadataJson  String?
+  createdAt     DateTime       @default(now())
+  chat          Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  uploadedFiles UploadedFile[]
+  agentRuns     AgentRun[]
+
+  @@index([chatId, createdAt])
+}
+
+model UploadedFile {
+  id          String   @id @default(cuid())
+  chatId      String
+  messageId   String?
+  fileName    String
+  contentType String
+  size        Int
+  path        String
+  createdAt   DateTime @default(now())
+  chat        Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  message     Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([chatId, createdAt])
+}
+
+model AgentRun {
+  id             String           @id @default(cuid())
+  chatId         String
+  messageId      String?
+  status         String
+  inputJson      String
+  outputJson     String?
+  error          String?
+  createdAt      DateTime         @default(now())
+  completedAt    DateTime?
+  chat           Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  message        Message?         @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  steps          AgentStep[]
+  toolCalls      ToolCall[]
+  actionProposal ActionProposal?
+
+  @@index([chatId, createdAt])
+}
+
+model AgentStep {
+  id          String   @id @default(cuid())
+  chatId      String
+  agentRunId  String
+  order       Int
+  label       String
+  status      String   @default("COMPLETED")
+  detailJson  String?
+  createdAt   DateTime @default(now())
+  chat        Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  agentRun    AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, order])
+  @@index([agentRunId, order])
+}
+
+model ToolCall {
+  id            String   @id @default(cuid())
+  chatId        String
+  agentRunId    String
+  name          String
+  inputJson     String
+  resultSummary String
+  resultJson    String?
+  status        String
+  error         String?
+  createdAt     DateTime @default(now())
+  chat          Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  agentRun      AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@index([agentRunId, createdAt])
+}
+
+model ActionProposal {
+  id                String            @id @default(cuid())
+  chatId            String
+  agentRunId        String            @unique
+  type              String
+  status            String
+  title             String
+  summary           String
+  hotelId           String
+  affectedRowsCount Int
+  assumptionsJson   String
+  warningsJson      String
+  diffsJson         String
+  pmsPayloadJson    String
+  toolCallsJson     String
+  oldValuesJson     String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  chat              Chat              @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  agentRun          AgentRun          @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  executions        ActionExecution[]
+
+  @@index([chatId, createdAt])
+  @@index([status, createdAt])
+}
+
+model ActionExecution {
+  id               String         @id @default(cuid())
+  actionProposalId String
+  status           String
+  resultJson       String?
+  conflictJson     String?
+  error            String?
+  createdAt        DateTime       @default(now())
+  actionProposal   ActionProposal @relation(fields: [actionProposalId], references: [id], onDelete: Cascade)
+
+  @@index([actionProposalId, createdAt])
+}

@@ -3,5 +3,9 @@ node_modules/
 coverage/
 .DS_Store
 *.log
+*.tsbuildinfo
+*.db
+*.db-journal
+uploads/
 .env*
 !.env.example
