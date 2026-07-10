@@ -119,6 +119,13 @@ export async function preparePercentagePriceProposal(
       return false;
     }
 
+    if (intent.roomName) {
+      const roomName = roomNameById.get(String(row.roomTypeProviderId)) ?? "";
+      if (!normalizeSearchText(roomName).includes(normalizeSearchText(intent.roomName))) {
+        return false;
+      }
+    }
+
     return true;
   });
 
@@ -149,6 +156,7 @@ export async function preparePercentagePriceProposal(
     const roomName = roomNameById.get(String(row.roomTypeProviderId));
 
     oldValues.push({
+      entityType: "PRICE_CAPACITY",
       rowId,
       date: row.date,
       roomTypeProviderId,
@@ -159,6 +167,8 @@ export async function preparePercentagePriceProposal(
 
     if (newBoardPrice !== undefined) {
       diffs.push({
+        action: "UPDATE",
+        entityType: "PRICE_CAPACITY",
         rowId,
         roomTypeProviderId,
         roomName,
@@ -172,6 +182,8 @@ export async function preparePercentagePriceProposal(
 
     if (newDisplayPrice !== undefined) {
       diffs.push({
+        action: "UPDATE",
+        entityType: "PRICE_CAPACITY",
         rowId,
         roomTypeProviderId,
         roomName,
@@ -210,7 +222,7 @@ export async function preparePercentagePriceProposal(
 
   const title = `${capitalize(intent.direction)} room prices by ${intent.percent}%`;
   const proposal = agentActionProposalSchema.parse({
-    type: "PRICE_CAPACITY_UPSERT",
+    type: "PRICE_CAPACITY_UPDATE",
     status: "PENDING_CONFIRMATION",
     title,
     summary: `${title} for hotel ${intent.hotelId}. ${validRows.length} PMS rows are affected.`,
@@ -235,6 +247,10 @@ export async function preparePercentagePriceProposal(
     steps,
     toolCalls,
   };
+}
+
+function normalizeSearchText(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 export function buildRowId(row: PriceCapacityRecord): string {

@@ -8,7 +8,7 @@ import type {
 } from "../../shared/agent-types";
 import type { ServerConfig } from "../config";
 import {
-  getExistingPriceCapacity,
+  getPriceCapacityRows,
   listChildrenCategories,
   listHotels,
   listRatePlans,
@@ -97,17 +97,31 @@ export function createAgentTools(
   );
 
   const getExistingPriceCapacityTool = tool(
-    async ({ hotelId, from, to }) => {
-      return getExistingPriceCapacity(config, hotelId, from, to);
+    async (filters) => {
+      return getPriceCapacityRows(config, filters);
     },
     {
       name: "getExistingPriceCapacityTool",
       description:
-        "Get existing live price-capacity records for a hotel date range.",
+        "Get live price-capacity rows for a hotel. Use this before comparing, filtering, sorting, or selecting rooms by price. Optional filters can narrow date, room, rate plan, and numeric price ranges.",
       schema: z.object({
         hotelId: z.union([z.string(), z.number()]),
-        from: z.string().min(1),
-        to: z.string().min(1),
+        from: z.string().min(1).optional(),
+        to: z.string().min(1).optional(),
+        roomTypeProviderId: z.union([z.string(), z.number()]).optional(),
+        ratePlanId: z.union([z.string(), z.number()]).optional(),
+        displayPriceGt: z.number().finite().optional(),
+        displayPriceGte: z.number().finite().optional(),
+        displayPriceLt: z.number().finite().optional(),
+        displayPriceLte: z.number().finite().optional(),
+        boardPriceGt: z.number().finite().optional(),
+        boardPriceGte: z.number().finite().optional(),
+        boardPriceLt: z.number().finite().optional(),
+        boardPriceLte: z.number().finite().optional(),
+        payablePriceGt: z.number().finite().optional(),
+        payablePriceGte: z.number().finite().optional(),
+        payablePriceLt: z.number().finite().optional(),
+        payablePriceLte: z.number().finite().optional(),
       }),
     },
   );
@@ -176,7 +190,7 @@ export function createAgentTools(
     {
       name: "preparePriceCapacityUpsertTool",
       description:
-        "Prepare a draft PMS price-capacity upsert payload and review diff. This never executes writes.",
+        "Prepare a draft PMS price-capacity upsert payload and review diff. This never executes writes. When a request includes a number, ranking, filter, percentage, or exact target, first retrieve live PMS data, filter and sort deterministically, select the requested records, then prepare JSON.",
       schema: z.object({
         hotel: z.any(),
         extractedRateSheet: z.any(),

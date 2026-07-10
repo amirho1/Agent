@@ -71,6 +71,9 @@ describe("preparePercentagePriceProposal", function () {
       { field: "boardPrice", oldValue: 600, newValue: 660 },
       { field: "displayPrice", oldValue: 700, newValue: 770 },
     ]);
+    if (!("items" in prepared.proposal.pmsPayload)) {
+      throw new Error("Expected price-capacity payload items.");
+    }
     expect(prepared.proposal.pmsPayload.items[0]).toMatchObject({
       count: 2,
       constraint: { minLos: 1, maxLos: 10, stopSell: false },
@@ -88,6 +91,7 @@ describe("preparePercentagePriceProposal", function () {
     expect(prepared.proposal.assumptions.join(" ")).toMatch(/No date range/);
     expect(prepared.oldValues).toEqual([
       {
+        entityType: "PRICE_CAPACITY",
         rowId: "2026-08-01:31:112",
         date: "2026-08-01",
         roomTypeProviderId: 31,

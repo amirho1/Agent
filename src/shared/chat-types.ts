@@ -1,4 +1,8 @@
-import type { AgentActionDiff, AgentActionProposal } from "./agent-types";
+import type {
+  AgentActionDiff,
+  AgentActionProposal,
+  AgentReadResult,
+} from "./agent-types";
 
 export type ChatListItem = {
   id: string;
@@ -51,6 +55,19 @@ export type ActionProposalDto = {
   executions: ActionExecutionDto[];
 };
 
+export type ReadResultDto = {
+  id: string;
+  type: AgentReadResult["type"];
+  title: string;
+  summary: string;
+  hotelId?: string | null;
+  matchedRowsCount: number;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  toolCalls: AgentReadResult["toolCalls"];
+  createdAt: string;
+};
+
 export type UploadedFileDto = {
   id: string;
   fileName: string;
@@ -64,5 +81,6 @@ export type ChatDetailsDto = {
   messages: ChatMessageDto[];
   uploadedFiles: UploadedFileDto[];
   agentSteps: AgentStepDto[];
+  readResults: ReadResultDto[];
   actionProposals: ActionProposalDto[];
 };

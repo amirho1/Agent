@@ -17,6 +17,7 @@ model Chat {
   agentRuns       AgentRun[]
   agentSteps      AgentStep[]
   toolCalls       ToolCall[]
+  readResults     ReadResult[]
   actionProposals ActionProposal[]
 }
 
@@ -63,6 +64,7 @@ model AgentRun {
   message        Message?         @relation(fields: [messageId], references: [id], onDelete: SetNull)
   steps          AgentStep[]
   toolCalls      ToolCall[]
+  readResult     ReadResult?
   actionProposal ActionProposal?
 
   @@index([chatId, createdAt])
@@ -100,6 +102,25 @@ model ToolCall {
 
   @@index([chatId, createdAt])
   @@index([agentRunId, createdAt])
+}
+
+model ReadResult {
+  id               String   @id @default(cuid())
+  chatId           String
+  agentRunId       String   @unique
+  type             String
+  title            String
+  summary          String
+  hotelId          String?
+  matchedRowsCount Int
+  columnsJson      String
+  rowsJson         String
+  toolCallsJson    String
+  createdAt        DateTime @default(now())
+  chat             Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  agentRun         AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
 }
 
 model ActionProposal {

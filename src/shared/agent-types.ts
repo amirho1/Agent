@@ -258,23 +258,86 @@ export type PriceUpdateIntent = {
   }[];
 };
 
+export type AgentIntent =
+  | "ROOM_LIST"
+  | "ROOM_FILTER"
+  | "ROOM_SORT"
+  | "ROOM_CREATE"
+  | "ROOM_UPDATE"
+  | "ROOM_DELETE"
+  | "ROOM_DEACTIVATE"
+  | "PRICE_CAPACITY_UPDATE"
+  | "GUIDANCE"
+  | "CLARIFICATION_REQUIRED";
+
+export type AgentReadResult = {
+  type: "ROOM_LIST" | "ROOM_FILTER" | "ROOM_SORT";
+  title: string;
+  summary: string;
+  hotelId?: EntityId;
+  matchedRowsCount: number;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  toolCalls: {
+    name: string;
+    input: unknown;
+    resultSummary: string;
+  }[];
+};
+
 export type AgentActionDiff = {
+  action?: "CREATE" | "UPDATE" | "DELETE" | "DEACTIVATE";
   rowId: string;
-  roomTypeProviderId: number;
+  entityType?: "ROOM" | "PRICE_CAPACITY";
+  roomTypeProviderId?: number;
   roomName?: string;
-  date: string;
+  date?: string;
   ratePlanId?: number;
-  field: "boardPrice" | "displayPrice";
+  field: string;
   oldValue: string | number | boolean | null;
   newValue: string | number | boolean | null;
 };
 
+export type RoomActionPmsPayload =
+  | {
+      action: "CREATE_ROOM";
+      hotelId: EntityId;
+      room: {
+        name: string;
+        defaultCount: number;
+        isActive?: boolean;
+        description?: string;
+      };
+    }
+  | {
+      action: "UPDATE_ROOM" | "DEACTIVATE_ROOM";
+      hotelId: EntityId;
+      roomId: EntityId;
+      update: Partial<{
+        name: string;
+        defaultCount: number;
+        isActive: boolean;
+        description: string;
+      }>;
+    }
+  | {
+      action: "DELETE_ROOM";
+      hotelId: EntityId;
+      roomId: EntityId;
+    };
+
 export type AgentActionProposal = {
-  type: "PRICE_CAPACITY_UPSERT";
+  type:
+    | "ROOM_CREATE"
+    | "ROOM_UPDATE"
+    | "ROOM_DELETE"
+    | "ROOM_DEACTIVATE"
+    | "PRICE_CAPACITY_UPDATE"
+    | "PRICE_CAPACITY_UPSERT";
   status: "PENDING_CONFIRMATION";
   title: string;
   summary: string;
-  hotelId: EntityId;
+  hotelId?: EntityId;
   affectedRowsCount: number;
   assumptions: string[];
   warnings: string[];
@@ -284,16 +347,31 @@ export type AgentActionProposal = {
     resultSummary: string;
   }[];
   diffs: AgentActionDiff[];
-  pmsPayload: {
-    items: PriceCapacityUpsertItem[];
-  };
+  pmsPayload:
+    | {
+        items: PriceCapacityUpsertItem[];
+      }
+    | RoomActionPmsPayload
+    | {
+        items: RoomActionPmsPayload[];
+      };
 };
 
-export type StoredProposalOldValue = {
-  rowId: string;
-  date: string;
-  roomTypeProviderId: number;
-  ratePlanId: number;
-  boardPrice: number | null;
-  displayPrice: number | null;
-};
+export type StoredProposalOldValue =
+  | {
+      entityType?: "PRICE_CAPACITY";
+      rowId: string;
+      date: string;
+      roomTypeProviderId: number;
+      ratePlanId: number;
+      boardPrice: number | null;
+      displayPrice: number | null;
+      payablePrice?: number | null;
+    }
+  | {
+      entityType: "ROOM";
+      rowId: string;
+      hotelId: EntityId;
+      roomId: EntityId;
+      values: Record<string, string | number | boolean | null>;
+    };

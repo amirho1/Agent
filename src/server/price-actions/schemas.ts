@@ -84,42 +84,115 @@ export const priceCapacityUpsertItemSchema = z
 
 export const agentActionDiffSchema = z
   .object({
+    action: z
+      .enum(["CREATE", "UPDATE", "DELETE", "DEACTIVATE"])
+      .default("UPDATE"),
     rowId: z.string().min(1),
-    roomTypeProviderId: z.number().int().positive(),
+    entityType: z.enum(["ROOM", "PRICE_CAPACITY"]).default("PRICE_CAPACITY"),
+    roomTypeProviderId: z.number().int().positive().optional(),
     roomName: z.string().optional(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     ratePlanId: z.number().int().positive().optional(),
-    field: z.enum(["boardPrice", "displayPrice"]),
+    field: z.string().min(1),
     oldValue: z.union([z.string(), z.number(), z.boolean(), z.null()]),
     newValue: z.union([z.string(), z.number(), z.boolean(), z.null()]),
   })
   .strict();
 
+export const agentToolCallSummarySchema = z
+  .object({
+    name: z.string().min(1),
+    input: z.unknown(),
+    resultSummary: z.string().min(1),
+  })
+  .strict();
+
+export const roomActionPmsPayloadSchema = z.union([
+  z
+    .object({
+      action: z.literal("CREATE_ROOM"),
+      hotelId: entityIdSchema,
+      room: z
+        .object({
+          name: z.string().min(1),
+          defaultCount: z.number().finite().positive(),
+          isActive: z.boolean().optional(),
+          description: z.string().optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.enum(["UPDATE_ROOM", "DEACTIVATE_ROOM"]),
+      hotelId: entityIdSchema,
+      roomId: entityIdSchema,
+      update: z
+        .object({
+          name: z.string().min(1).optional(),
+          defaultCount: z.number().finite().positive().optional(),
+          isActive: z.boolean().optional(),
+          description: z.string().optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("DELETE_ROOM"),
+      hotelId: entityIdSchema,
+      roomId: entityIdSchema,
+    })
+    .strict(),
+]);
+
+export const priceCapacityActionPayloadSchema = z
+  .object({
+    items: z.array(priceCapacityUpsertItemSchema),
+  })
+  .strict();
+
 export const agentActionProposalSchema = z
   .object({
-    type: z.literal("PRICE_CAPACITY_UPSERT"),
+    type: z.enum([
+      "ROOM_CREATE",
+      "ROOM_UPDATE",
+      "ROOM_DELETE",
+      "ROOM_DEACTIVATE",
+      "PRICE_CAPACITY_UPDATE",
+      "PRICE_CAPACITY_UPSERT",
+    ]),
     status: z.literal("PENDING_CONFIRMATION"),
     title: z.string().min(1),
     summary: z.string().min(1),
-    hotelId: entityIdSchema,
+    hotelId: entityIdSchema.optional(),
     affectedRowsCount: z.number().int().nonnegative(),
     assumptions: z.array(z.string()),
     warnings: z.array(z.string()),
-    toolCalls: z.array(
+    toolCalls: z.array(agentToolCallSummarySchema),
+    diffs: z.array(agentActionDiffSchema),
+    pmsPayload: z.union([
+      priceCapacityActionPayloadSchema,
+      roomActionPmsPayloadSchema,
       z
         .object({
-          name: z.string().min(1),
-          input: z.unknown(),
-          resultSummary: z.string().min(1),
+          items: z.array(roomActionPmsPayloadSchema),
         })
         .strict(),
-    ),
-    diffs: z.array(agentActionDiffSchema),
-    pmsPayload: z
-      .object({
-        items: z.array(priceCapacityUpsertItemSchema),
-      })
-      .strict(),
+    ]),
+  })
+  .strict();
+
+export const agentReadResultSchema = z
+  .object({
+    type: z.enum(["ROOM_LIST", "ROOM_FILTER", "ROOM_SORT"]),
+    title: z.string().min(1),
+    summary: z.string().min(1),
+    hotelId: entityIdSchema.optional(),
+    matchedRowsCount: z.number().int().nonnegative(),
+    columns: z.array(z.string().min(1)),
+    rows: z.array(z.record(z.string(), z.unknown())),
+    toolCalls: z.array(agentToolCallSummarySchema),
   })
   .strict();
 

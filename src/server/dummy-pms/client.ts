@@ -31,6 +31,26 @@ export type PriceCapacityRowFilters = {
   payablePriceLte?: number;
 };
 
+export type RoomSearchFilters = {
+  hotelId: EntityId;
+  name?: string;
+  isActive?: boolean;
+};
+
+export type CreateRoomPayload = {
+  name: string;
+  defaultCount: number;
+  isActive?: boolean;
+  description?: string;
+};
+
+export type UpdateRoomPayload = Partial<{
+  name: string;
+  defaultCount: number;
+  isActive: boolean;
+  description: string;
+}>;
+
 /**
  * List active hotels from dummy-PMS.
  * @param config - Server config.
@@ -41,6 +61,8 @@ export async function listHotels(config: ServerConfig): Promise<Hotel[]> {
     headers: buildDummyPmsHeaders(config),
   });
 }
+
+export const getHotels = listHotels;
 
 /**
  * List room type providers for a hotel.
@@ -56,6 +78,52 @@ export async function listRoomTypes(
     `${config.dummyPmsBaseUrl}/api/exchange/room-type-providers`,
     {
       headers: buildDummyPmsHeaders(config, hotelId),
+    },
+  );
+}
+
+export async function getHotelRooms(
+  config: ServerConfig,
+  hotelId: EntityId,
+): Promise<RoomTypeProvider[]> {
+  return fetchJson<RoomTypeProvider[]>(
+    `${config.dummyPmsBaseUrl}/hotels/${hotelId}/rooms`,
+    {
+      headers: buildDummyPmsHeaders(config, hotelId),
+    },
+  );
+}
+
+export async function getRoomById(
+  config: ServerConfig,
+  hotelId: EntityId,
+  roomId: EntityId,
+): Promise<RoomTypeProvider> {
+  return fetchJson<RoomTypeProvider>(
+    `${config.dummyPmsBaseUrl}/hotels/${hotelId}/rooms/${roomId}`,
+    {
+      headers: buildDummyPmsHeaders(config, hotelId),
+    },
+  );
+}
+
+export async function searchRooms(
+  config: ServerConfig,
+  filters: RoomSearchFilters,
+): Promise<RoomTypeProvider[]> {
+  const params = new URLSearchParams();
+  appendOptionalParam(params, "name", filters.name);
+  if (filters.isActive !== undefined) {
+    params.set("isActive", String(filters.isActive));
+  }
+
+  const query = params.toString();
+  return fetchJson<RoomTypeProvider[]>(
+    `${config.dummyPmsBaseUrl}/hotels/${filters.hotelId}/rooms${
+      query ? `?${query}` : ""
+    }`,
+    {
+      headers: buildDummyPmsHeaders(config, filters.hotelId),
     },
   );
 }
@@ -77,6 +145,8 @@ export async function listRatePlans(
     },
   );
 }
+
+export const getRatePlans = listRatePlans;
 
 /**
  * List children categories for a hotel.
@@ -176,6 +246,78 @@ export async function upsertPriceCapacity(
       },
     },
   );
+}
+
+export const executePriceCapacityUpsert = upsertPriceCapacity;
+
+export async function executeCreateRoom(
+  config: ServerConfig,
+  hotelId: EntityId,
+  payload: CreateRoomPayload,
+): Promise<RoomTypeProvider> {
+  return fetchJson<RoomTypeProvider>(
+    `${config.dummyPmsBaseUrl}/hotels/${hotelId}/rooms`,
+    {
+      method: "POST",
+      headers: {
+        ...buildDummyPmsHeaders(config, hotelId),
+        "x-actor-type": "AI_AGENT",
+        "x-actor-id": "3",
+      },
+      body: payload,
+    },
+  );
+}
+
+export async function executeUpdateRoom(
+  config: ServerConfig,
+  hotelId: EntityId,
+  roomId: EntityId,
+  payload: UpdateRoomPayload,
+): Promise<RoomTypeProvider> {
+  return fetchJson<RoomTypeProvider>(
+    `${config.dummyPmsBaseUrl}/hotels/${hotelId}/rooms/${roomId}`,
+    {
+      method: "PATCH",
+      headers: {
+        ...buildDummyPmsHeaders(config, hotelId),
+        "x-actor-type": "AI_AGENT",
+        "x-actor-id": "3",
+      },
+      body: payload,
+    },
+  );
+}
+
+export async function executeDeactivateRoom(
+  config: ServerConfig,
+  hotelId: EntityId,
+  roomId: EntityId,
+): Promise<RoomTypeProvider> {
+  return executeUpdateRoom(config, hotelId, roomId, { isActive: false });
+}
+
+export async function executeDeleteRoom(
+  config: ServerConfig,
+  hotelId: EntityId,
+  roomId: EntityId,
+): Promise<{
+  success: boolean;
+  deletedRoom: RoomTypeProvider;
+  deletedPriceCapacityRows: number;
+}> {
+  return fetchJson<{
+    success: boolean;
+    deletedRoom: RoomTypeProvider;
+    deletedPriceCapacityRows: number;
+  }>(`${config.dummyPmsBaseUrl}/hotels/${hotelId}/rooms/${roomId}`, {
+    method: "DELETE",
+    headers: {
+      ...buildDummyPmsHeaders(config, hotelId),
+      "x-actor-type": "AI_AGENT",
+      "x-actor-id": "3",
+    },
+  });
 }
 
 /**

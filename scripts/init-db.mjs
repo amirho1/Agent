@@ -21,6 +21,13 @@ const migrations = [
     name: "20260709195100_init",
     path: join(rootDir, "prisma/migrations/20260709195100_init/migration.sql"),
   },
+  {
+    name: "20260709211000_add_read_results",
+    path: join(
+      rootDir,
+      "prisma/migrations/20260709211000_add_read_results/migration.sql",
+    ),
+  },
 ];
 
 for (const migration of migrations) {

@@ -7,6 +7,8 @@ import { ChatSidebar } from "@/components/agent/chat-sidebar";
 import { AgentTracePanel } from "@/components/agent/agent-trace-panel";
 import { ActionSummaryCard } from "@/components/agent/action-summary-card";
 import { DiffTable } from "@/components/agent/diff-table";
+import { RoomResultTable } from "@/components/agent/room-result-table";
+import { PriceResultTable } from "@/components/agent/price-result-table";
 import { ConfirmActionModal } from "@/components/agent/confirm-action-modal";
 import { RejectActionModal } from "@/components/agent/reject-action-modal";
 import { ErrorState } from "@/components/agent/error-state";
@@ -31,6 +33,28 @@ export default function ChatDetailPage() {
     () => details?.actionProposals[0],
     [details?.actionProposals],
   );
+  const latestReadResult = useMemo(
+    () => details?.readResults[0],
+    [details?.readResults],
+  );
+  const latestArtifact = useMemo(() => {
+    if (!latestProposal && !latestReadResult) {
+      return null;
+    }
+
+    if (!latestProposal) {
+      return { kind: "read" as const, value: latestReadResult };
+    }
+
+    if (!latestReadResult) {
+      return { kind: "proposal" as const, value: latestProposal };
+    }
+
+    return new Date(latestReadResult.createdAt) >
+      new Date(latestProposal.createdAt)
+      ? { kind: "read" as const, value: latestReadResult }
+      : { kind: "proposal" as const, value: latestProposal };
+  }, [latestProposal, latestReadResult]);
 
   const loadChats = useCallback(async () => {
     const chatList = await getJson<{ chats: ChatListItem[] }>("/api/chats");
@@ -153,7 +177,7 @@ export default function ChatDetailPage() {
       />
       <AgentTracePanel steps={details?.agentSteps ?? []} />
       <section className="flex min-w-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="h-[calc(100vh-100px)]  overflow-y-auto p-4">
           {error ? <ErrorState message={error} /> : null}
           {isLoading && !details ? (
             <div className="p-4">
@@ -172,22 +196,28 @@ export default function ChatDetailPage() {
               </div>
             </section>
             <section className="min-w-0 space-y-4">
-              {latestProposal ? (
+              {latestArtifact?.kind === "proposal" && latestArtifact.value ? (
                 <>
                   <ActionSummaryCard
-                    proposal={latestProposal}
+                    proposal={latestArtifact.value}
                     onConfirm={() => setModal("confirm")}
                     onReject={() => setModal("reject")}
                     isBusy={isLoading}
                   />
-                  <DiffTable proposal={latestProposal} />
-                  {latestProposal.executions[0] ? (
-                    <ExecutionState proposal={latestProposal} />
+                  <DiffTable proposal={latestArtifact.value} />
+                  {latestArtifact.value.executions[0] ? (
+                    <ExecutionState proposal={latestArtifact.value} />
                   ) : null}
                 </>
+              ) : latestArtifact?.kind === "read" && latestArtifact.value ? (
+                latestArtifact.value.type.startsWith("ROOM") ? (
+                  <RoomResultTable result={latestArtifact.value} />
+                ) : (
+                  <PriceResultTable result={latestArtifact.value} />
+                )
               ) : (
                 <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-500">
-                  No proposal yet.
+                  No agent result yet.
                 </div>
               )}
             </section>

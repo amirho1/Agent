@@ -56,6 +56,7 @@ export function extractPriceUpdateIntent(
     normalizedMessage,
     /room(?:\s*type)?(?:\s*provider)?(?:\s*id)?\s*(\d+)/i,
   );
+  const roomName = extractRoomNameFilter(normalizedMessage);
   const ratePlanId = extractPositiveInteger(
     normalizedMessage,
     /rate\s*plan(?:\s*id)?\s*(\d+)/i,
@@ -69,6 +70,7 @@ export function extractPriceUpdateIntent(
     from: dates[0],
     to: dates[1],
     roomTypeProviderId,
+    roomName,
     ratePlanId,
     priceFilters: extractPriceFilters(normalizedMessage),
   });
@@ -77,6 +79,19 @@ export function extractPriceUpdateIntent(
     ok: true,
     intent: parsed,
   };
+}
+
+function extractRoomNameFilter(message: string): string | undefined {
+  const allRoomsMatch = message.match(/all\s+([a-z0-9\s-]+?)\s+rooms?\b/i);
+  const namedRoomsMatch = message.match(/(?:for|of)\s+([a-z0-9\s-]+?)\s+rooms?\b/i);
+  const rawValue = allRoomsMatch?.[1] ?? namedRoomsMatch?.[1];
+  const value = rawValue?.trim();
+
+  if (!value || ["hotel", "room", "price", "prices"].includes(value)) {
+    return undefined;
+  }
+
+  return value;
 }
 
 function mentionsPrice(message: string): boolean {
