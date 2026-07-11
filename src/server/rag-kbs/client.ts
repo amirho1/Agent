@@ -1,5 +1,6 @@
 import type { ServerConfig } from "../config";
 import { fetchJson } from "../http";
+import { logOperationEvent, withLoggedOperation } from "../logging";
 
 type KnowledgeBaseListResponse = {
   data: Array<{
@@ -41,24 +42,65 @@ export async function searchKnowledgeBase(
   config: ServerConfig,
   query: string,
 ): Promise<KnowledgeBaseSearchResponse> {
-  const knowledgeBaseId =
-    config.ragKbsKnowledgeBaseId || (await getDefaultKnowledgeBaseId(config));
-
-  return fetchJson<KnowledgeBaseSearchResponse>(
-    `${config.ragKbsBaseUrl}/api/v1/query`,
+  return withLoggedOperation(
+    "rag.retrieval",
     {
-      method: "POST",
-      headers: buildRagHeaders(config),
-      body: {
+      query,
+      tenantId: config.ragKbsTenantId,
+      configuredKnowledgeBaseId: config.ragKbsKnowledgeBaseId || null,
+    },
+    async () => {
+      const knowledgeBaseId =
+        config.ragKbsKnowledgeBaseId || (await getDefaultKnowledgeBaseId(config));
+
+      logOperationEvent("vector.search", "vector.search.started", {
         tenantId: config.ragKbsTenantId,
         knowledgeBaseId,
         query,
         topK: 6,
-        includeMetadata: true,
-        includeText: true,
-      },
+      });
+      const response = await fetchJson<KnowledgeBaseSearchResponse>(
+        `${config.ragKbsBaseUrl}/api/v1/query`,
+        {
+          targetService: "rag-kbs",
+          method: "POST",
+          headers: buildRagHeaders(config),
+          body: {
+            tenantId: config.ragKbsTenantId,
+            knowledgeBaseId,
+            query,
+            topK: 6,
+            includeMetadata: true,
+            includeText: true,
+          },
+        },
+      );
+      logOperationEvent("vector.search", "vector.search.completed", {
+        queryId: response.queryId,
+        tenantId: response.tenantId,
+        knowledgeBaseId: response.knowledgeBaseId,
+        query: response.query,
+        resultCount: response.resultCount,
+        latencyMs: response.latencyMs,
+        results: response.results,
+      });
+      return response;
     },
   );
+}
+
+export function logEmbeddingGeneration(input: {
+  model?: string | null;
+  text: string;
+  tokenUsage?: unknown;
+  executionTimeMs?: number;
+}): void {
+  logOperationEvent("embedding.generate", "embedding.generate.completed", {
+    model: input.model ?? null,
+    text: input.text,
+    tokenUsage: input.tokenUsage ?? null,
+    executionTimeMs: input.executionTimeMs ?? null,
+  });
 }
 
 /**
@@ -78,6 +120,7 @@ async function getDefaultKnowledgeBaseId(
   const response = await fetchJson<KnowledgeBaseListResponse>(
     `${config.ragKbsBaseUrl}/api/v1/knowledge-bases?${params.toString()}`,
     {
+      targetService: "rag-kbs",
       headers: buildRagHeaders(config),
     },
   );
@@ -88,6 +131,11 @@ async function getDefaultKnowledgeBaseId(
       `No active RAG-KBS knowledge base was found for tenant ${config.ragKbsTenantId}.`,
     );
   }
+  logOperationEvent("rag.knowledge_base", "rag.default_knowledge_base.selected", {
+    tenantId: config.ragKbsTenantId,
+    knowledgeBaseId: knowledgeBase.id,
+    name: knowledgeBase.name,
+  });
 
   return knowledgeBase.id;
 }

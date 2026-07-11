@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerConfig } from "../config";
 import { normalizeBaseUrl } from "../config";
 import {
-  buildLamasooHeaders,
+  buildLamasooBearerHeaders,
+  buildLamasooExchangeHeaders,
   listHotels,
+  listBundles,
   listRatePlans,
   listRoomTypes,
   upsertPriceCapacity,
@@ -25,6 +27,7 @@ const config: ServerConfig = {
   ragKbsApiKey: "",
   lamasooBaseUrl: "https://whale.lamasoo.com",
   authorization: "jwt-token",
+  exchangeAuthorization: "exchange-token",
 };
 
 describe("Lamasoo client", function () {
@@ -36,11 +39,20 @@ describe("Lamasoo client", function () {
     );
   });
 
-  it("normalizes base URLs and builds Bearer hotel headers", function () {
+  it("normalizes base URLs and builds exchange and Bearer hotel headers", function () {
     expect(normalizeBaseUrl("https://whale.lamasoo.com/")).toBe(
       "https://whale.lamasoo.com",
     );
-    expect(buildLamasooHeaders(config, 12)).toEqual({
+    expect(buildLamasooExchangeHeaders(config, 12)).toEqual({
+      "exchange-authorization": "exchange-token",
+      "hotel-id": "12",
+    });
+    expect(
+      buildLamasooBearerHeaders(
+        { ...config, authorization: "Bearer jwt-token" },
+        12,
+      ),
+    ).toEqual({
       Authorization: "Bearer jwt-token",
       "hotel-id": "12",
     });
@@ -50,6 +62,7 @@ describe("Lamasoo client", function () {
     await listHotels(config);
     await listRoomTypes(config, 1);
     await listRatePlans(config, 1);
+    await listBundles(config, 1);
     await upsertPriceCapacity(config, {
       hotelId: 1,
       items: [
@@ -66,10 +79,21 @@ describe("Lamasoo client", function () {
       "https://whale.lamasoo.com/api/exchange/hotels",
       "https://whale.lamasoo.com/api/exchange/room-type-providers",
       "https://whale.lamasoo.com/api/exchange/rate-plans",
+      "https://whale.lamasoo.com/api/bundle",
       "https://whale.lamasoo.com/api/exchange/price-capacity/upsert",
     ]);
-    expect(fetchMock.mock.calls[3][1]).toMatchObject({
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+      "exchange-authorization": "exchange-token",
+    });
+    expect(fetchMock.mock.calls[3][1]?.headers).toMatchObject({
+      Authorization: "Bearer jwt-token",
+    });
+    expect(fetchMock.mock.calls[4][1]).toMatchObject({
       method: "POST",
+      headers: expect.objectContaining({
+        "exchange-authorization": "exchange-token",
+        "hotel-id": "1",
+      }),
       body: JSON.stringify({
         items: [
           {

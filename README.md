@@ -19,11 +19,24 @@ Copy `.env.example` to `.env.local` or `.env` and set:
 
 ```env
 DATABASE_URL=file:./dev.db
+LOG_DIR=./logs
+LOG_LEVEL=info
 LAMASOO_BASE_URL=https://whale.lamasoo.com/
 AUTHORIZATION=<JWT_BEARER_TOKEN>
+EXCHANGE_AUTHORIZATION=<LAMASOO_EXCHANGE_TOKEN>
 ```
 
-The token is sent as `Authorization: Bearer <token>`. Hotel-scoped Lamasoo calls also include the `hotel-id` header.
+For Lamasoo exchange APIs, `EXCHANGE_AUTHORIZATION` is sent as `exchange-authorization: <token>`. Bundle/current-price APIs use `AUTHORIZATION` as `Authorization: Bearer <token>`. If `EXCHANGE_AUTHORIZATION` is omitted, the app falls back to `AUTHORIZATION`, but Lamasoo may reject a CRS/web JWT with `user not found`. Hotel-scoped calls also include the `hotel-id` header.
+
+## Logging
+
+The server writes structured JSON logs to `LOG_DIR` with daily rotation:
+
+- `app-YYYY-MM-DD.log`
+- `access-YYYY-MM-DD.log`
+- `error-YYYY-MM-DD.log`
+
+Development console logs are pretty-printed. Production defaults to `/logs` when `LOG_DIR` is not set, so mount that directory as persistent storage in your runtime if you run the app in containers.
 
 ## Setup
 

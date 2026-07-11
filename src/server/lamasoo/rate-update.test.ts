@@ -36,6 +36,7 @@ const config: ServerConfig = {
   ragKbsApiKey: "",
   lamasooBaseUrl: "https://whale.lamasoo.com",
   authorization: "jwt-token",
+  exchangeAuthorization: "exchange-token",
 };
 
 describe("Lamasoo rate update proposal", function () {

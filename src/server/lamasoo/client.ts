@@ -8,24 +8,37 @@ import type {
   RoomTypeProvider,
 } from "@/src/shared/agent-types";
 import type { ServerConfig } from "../config";
-import { assertLamasooConfig } from "../config";
+import { assertLamasooConfig, assertLamasooExchangeConfig } from "../config";
 import { fetchJson } from "../http";
 
-export function buildLamasooHeaders(
+export function buildLamasooExchangeHeaders(
+  config: ServerConfig,
+  hotelId?: EntityId,
+): HeadersInit {
+  assertLamasooExchangeConfig(config);
+
+  return {
+    "exchange-authorization": normalizeToken(config.exchangeAuthorization),
+    ...(hotelId !== undefined ? { "hotel-id": String(hotelId) } : {}),
+  };
+}
+
+export function buildLamasooBearerHeaders(
   config: ServerConfig,
   hotelId?: EntityId,
 ): HeadersInit {
   assertLamasooConfig(config);
 
   return {
-    Authorization: `Bearer ${config.authorization}`,
+    Authorization: `Bearer ${normalizeToken(config.authorization)}`,
     ...(hotelId !== undefined ? { "hotel-id": String(hotelId) } : {}),
   };
 }
 
 export async function listHotels(config: ServerConfig): Promise<Hotel[]> {
   return fetchJson<Hotel[]>(`${config.lamasooBaseUrl}/api/exchange/hotels`, {
-    headers: buildLamasooHeaders(config),
+    targetService: "lamasoo",
+    headers: buildLamasooExchangeHeaders(config),
   });
 }
 
@@ -36,7 +49,8 @@ export async function listRoomTypes(
   return fetchJson<RoomTypeProvider[]>(
     `${config.lamasooBaseUrl}/api/exchange/room-type-providers`,
     {
-      headers: buildLamasooHeaders(config, hotelId),
+      targetService: "lamasoo",
+      headers: buildLamasooExchangeHeaders(config, hotelId),
     },
   );
 }
@@ -48,7 +62,8 @@ export async function listRatePlans(
   return fetchJson<RatePlan[]>(
     `${config.lamasooBaseUrl}/api/exchange/rate-plans`,
     {
-      headers: buildLamasooHeaders(config, hotelId),
+      targetService: "lamasoo",
+      headers: buildLamasooExchangeHeaders(config, hotelId),
     },
   );
 }
@@ -58,7 +73,8 @@ export async function listBundles(
   hotelId: EntityId,
 ): Promise<BundleSummary[]> {
   return fetchJson<BundleSummary[]>(`${config.lamasooBaseUrl}/api/bundle`, {
-    headers: buildLamasooHeaders(config, hotelId),
+    targetService: "lamasoo",
+    headers: buildLamasooBearerHeaders(config, hotelId),
   });
 }
 
@@ -70,7 +86,8 @@ export async function getBundle(
   return fetchJson<BundleDetails>(
     `${config.lamasooBaseUrl}/api/bundle/${bundleId}`,
     {
-      headers: buildLamasooHeaders(config, hotelId),
+      targetService: "lamasoo",
+      headers: buildLamasooBearerHeaders(config, hotelId),
     },
   );
 }
@@ -82,11 +99,16 @@ export async function upsertPriceCapacity(
   return fetchJson<unknown>(
     `${config.lamasooBaseUrl}/api/exchange/price-capacity/upsert`,
     {
+      targetService: "lamasoo",
       method: "POST",
-      headers: buildLamasooHeaders(config, payload.hotelId),
+      headers: buildLamasooExchangeHeaders(config, payload.hotelId),
       body: {
         items: payload.items,
       },
     },
   );
+}
+
+function normalizeToken(token: string): string {
+  return token.replace(/^Bearer\s+/i, "").trim();
 }

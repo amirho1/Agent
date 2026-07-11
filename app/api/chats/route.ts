@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createChat, listChats } from "@/src/server/chats/service";
+import { routeErrorResponse, withApiLogging } from "@/src/server/logging";
 
 export const runtime = "nodejs";
 
@@ -10,23 +11,21 @@ const createChatSchema = z
   })
   .strict();
 
-export async function GET() {
+export const GET = withApiLogging("GET /api/chats", async function GET() {
   try {
     return NextResponse.json({ chats: await listChats() });
   } catch (error) {
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
+    return routeErrorResponse(error, "Chat list request failed.", 400);
   }
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withApiLogging("POST /api/chats", async function POST(
+  request,
+) {
   try {
     const body = createChatSchema.parse(await request.json().catch(() => ({})));
     return NextResponse.json(await createChat(body.message));
   } catch (error) {
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
+    return routeErrorResponse(error, "Chat creation request failed.", 400);
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Request failed.";
-}
+});

@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import type {
   AgentActionDiff,
   AgentActionProposal,
@@ -21,6 +22,11 @@ import { priceFields } from "../../shared/agent-types";
 import type { ServerConfig } from "../config";
 import { expandDateRange, isIsoDate } from "../price-updates/dates";
 import { parseRateSheetText } from "../rate-sheets/parser";
+import {
+  getDurationMs,
+  logOperationError,
+  logOperationEvent,
+} from "../logging";
 import {
   getBundle,
   listBundles,
@@ -66,11 +72,23 @@ export async function prepareLamasooRateUpdateProposal(
   config: ServerConfig,
   sourceText: string,
 ): Promise<PreparedLamasooProposal> {
+  const startedAt = performance.now();
+  logOperationEvent("proposal.prepare", "proposal.prepare.started", {
+    sourceText,
+    systemPromptVersion: "lamasoo-rate-update-v1",
+    selectedModel: config.agentModel || null,
+  });
   const steps: PreparedLamasooProposal["steps"] = [
     { label: "Read rate update request" },
   ];
   const toolCalls: StructuredToolCall[] = [];
   const { extractedRateSheet, issues } = parseRateSheetText(sourceText);
+  logOperationEvent("rate_sheet.parse", "rate_sheet.parsed", {
+    sourceText,
+    extractedRateSheet,
+    issues,
+    rowCount: extractedRateSheet.rows.length,
+  });
   steps.push({
     label: `Parsed ${extractedRateSheet.rows.length} rate rows`,
     status: issues.some((issue) => issue.level === "error")
@@ -126,6 +144,10 @@ export async function prepareLamasooRateUpdateProposal(
   }
 
   const matchedRows = matchRows(extractedRateSheet, selectedData);
+  logOperationEvent("rate_sheet.match", "rate_sheet.rows_matched", {
+    matchedRows,
+    selectedData,
+  });
   const validationIssues = [
     ...issues,
     ...selectionIssues,
@@ -185,6 +207,13 @@ export async function prepareLamasooRateUpdateProposal(
     diffs,
     lamasooPayload: payload,
   };
+  logOperationEvent("proposal.prepare", "proposal.prepare.completed", {
+    proposal,
+    oldValues,
+    validationIssues,
+    toolCalls,
+    executionTimeMs: getDurationMs(startedAt),
+  });
 
   return {
     proposal,
@@ -200,11 +229,25 @@ async function callTool<T>(
   input: unknown,
   operation: () => Promise<T>,
 ): Promise<T> {
+  const startedAt = performance.now();
+  logOperationEvent("agent.tool_call", "agent.tool_call.started", {
+    name,
+    input,
+  });
+
   try {
     const result = await operation();
     const resultSummary = Array.isArray(result)
       ? `Fetched ${result.length} records.`
       : "Fetched record.";
+    logOperationEvent("agent.tool_call", "agent.tool_call.completed", {
+      name,
+      input,
+      resultSummary,
+      result,
+      status: "success",
+      executionTimeMs: getDurationMs(startedAt),
+    });
     toolCalls.push({
       name,
       input,
@@ -216,6 +259,13 @@ async function callTool<T>(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Lamasoo request failed.";
+    logOperationError("agent.tool_call", "agent.tool_call.failed", error, {
+      name,
+      input,
+      resultSummary: message,
+      status: "error",
+      executionTimeMs: getDurationMs(startedAt),
+    });
     toolCalls.push({
       name,
       input,

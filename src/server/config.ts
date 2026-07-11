@@ -14,6 +14,7 @@ export type ServerConfig = {
   ragKbsApiKey: string;
   lamasooBaseUrl: string;
   authorization: string;
+  exchangeAuthorization: string;
 };
 
 function readStringEnv(key: string, fallback: string): string {
@@ -62,12 +63,24 @@ export function getServerConfig(): ServerConfig {
       readStringEnv("LAMASOO_BASE_URL", "https://whale.lamasoo.com/"),
     ),
     authorization: readStringEnv("AUTHORIZATION", ""),
+    exchangeAuthorization: readStringEnv(
+      "EXCHANGE_AUTHORIZATION",
+      readStringEnv("AUTHORIZATION", ""),
+    ),
   };
 }
 
 export function assertLamasooConfig(config: ServerConfig): void {
   if (!config.authorization) {
     throw new Error("Lamasoo API token is not configured. Set AUTHORIZATION.");
+  }
+}
+
+export function assertLamasooExchangeConfig(config: ServerConfig): void {
+  if (!config.exchangeAuthorization) {
+    throw new Error(
+      "Lamasoo exchange API token is not configured. Set EXCHANGE_AUTHORIZATION.",
+    );
   }
 }
 

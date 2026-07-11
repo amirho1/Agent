@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import type {
   ActionExecutionDto,
   ActionProposalDto,
@@ -17,66 +18,92 @@ import {
   type PreparedLamasooProposal,
   type StructuredToolCall,
 } from "../lamasoo/rate-update";
+import {
+  getDurationMs,
+  logOperationError,
+  logOperationEvent,
+  withLoggedOperation,
+} from "../logging";
 
 export async function listChats(): Promise<ChatListItem[]> {
-  const chats = await prisma.chat.findMany({
-    orderBy: { updatedAt: "desc" },
-    take: 50,
-  });
+  return withLoggedOperation("chat.list", { limit: 50 }, async () => {
+    const chats = await prisma.chat.findMany({
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+    });
 
-  return chats.map(serializeChat);
+    return chats.map(serializeChat);
+  });
 }
 
 export async function createChat(message?: string): Promise<ChatDetailsDto> {
-  const chat = await prisma.chat.create({
-    data: {
-      title: message ? createTitle(message) : "New chat",
+  return withLoggedOperation(
+    "chat.create",
+    { hasInitialMessage: Boolean(message?.trim()), message },
+    async () => {
+      const chat = await prisma.chat.create({
+        data: {
+          title: message ? createTitle(message) : "New chat",
+        },
+      });
+
+      logOperationEvent("chat.create", "chat.created", {
+        chatId: chat.id,
+        title: chat.title,
+      });
+
+      if (message?.trim()) {
+        await processUserMessage(chat.id, message);
+      }
+
+      return getChatDetails(chat.id);
     },
-  });
-
-  if (message?.trim()) {
-    await processUserMessage(chat.id, message);
-  }
-
-  return getChatDetails(chat.id);
+  );
 }
 
 export async function getChatDetails(chatId: string): Promise<ChatDetailsDto> {
-  const chat = await prisma.chat.findUnique({
-    where: { id: chatId },
-    include: {
-      messages: { orderBy: { createdAt: "asc" } },
-      uploadedFiles: { orderBy: { createdAt: "desc" } },
-      agentSteps: { orderBy: [{ createdAt: "asc" }, { order: "asc" }] },
-      readResults: { orderBy: { createdAt: "desc" } },
-      actionProposals: {
-        orderBy: { createdAt: "desc" },
-        include: {
-          executions: { orderBy: { createdAt: "desc" } },
+  return withLoggedOperation("chat.get", { chatId }, async () => {
+    const chat = await prisma.chat.findUnique({
+      where: { id: chatId },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        uploadedFiles: { orderBy: { createdAt: "desc" } },
+        agentSteps: { orderBy: [{ createdAt: "asc" }, { order: "asc" }] },
+        readResults: { orderBy: { createdAt: "desc" } },
+        actionProposals: {
+          orderBy: { createdAt: "desc" },
+          include: {
+            executions: { orderBy: { createdAt: "desc" } },
+          },
         },
       },
-    },
+    });
+
+    if (!chat) {
+      throw new Error("Chat was not found.");
+    }
+
+    return {
+      chat: serializeChat(chat),
+      messages: chat.messages.map(serializeMessage),
+      uploadedFiles: chat.uploadedFiles.map(serializeUploadedFile),
+      agentSteps: chat.agentSteps.map(serializeAgentStep),
+      readResults: chat.readResults.map(serializeReadResult),
+      actionProposals: chat.actionProposals.map(serializeActionProposal),
+    };
   });
-
-  if (!chat) {
-    throw new Error("Chat was not found.");
-  }
-
-  return {
-    chat: serializeChat(chat),
-    messages: chat.messages.map(serializeMessage),
-    uploadedFiles: chat.uploadedFiles.map(serializeUploadedFile),
-    agentSteps: chat.agentSteps.map(serializeAgentStep),
-    readResults: chat.readResults.map(serializeReadResult),
-    actionProposals: chat.actionProposals.map(serializeActionProposal),
-  };
 }
 
 export async function processUserMessage(
   chatId: string,
   content: string,
 ): Promise<ChatDetailsDto> {
-  return processRateUpdateText(chatId, content, content, { message: content });
+  return withLoggedOperation(
+    "chat.message.process",
+    { chatId, message: content },
+    async () =>
+      processRateUpdateText(chatId, content, content, { message: content }),
+  );
 }
 
 export async function processUploadedRateSheet(
@@ -85,7 +112,12 @@ export async function processUploadedRateSheet(
   fileText: string,
   input: unknown,
 ): Promise<ChatDetailsDto> {
-  return processRateUpdateText(chatId, userVisibleMessage, fileText, input);
+  return withLoggedOperation(
+    "chat.uploaded_rate_sheet.process",
+    { chatId, userVisibleMessage, input },
+    async () =>
+      processRateUpdateText(chatId, userVisibleMessage, fileText, input),
+  );
 }
 
 async function processRateUpdateText(
@@ -111,6 +143,10 @@ async function processRateUpdateText(
       content: trimmedContent,
     },
   });
+  logOperationEvent("agent.run", "agent.user_message.persisted", {
+    chatId,
+    messageId: userMessage.id,
+  });
 
   if (chat.title === "New chat") {
     await prisma.chat.update({
@@ -127,19 +163,60 @@ async function processRateUpdateText(
       inputJson: stringifyJson(input),
     },
   });
+  const config = getServerConfig();
+  const agentStartedAt = performance.now();
+  logOperationEvent("agent.ai_interaction", "agent.ai_interaction.started", {
+    chatId,
+    agentRunId: agentRun.id,
+    userPrompt: sourceText,
+    systemPromptVersion: "lamasoo-rate-update-v1",
+    selectedModel: config.agentModel || null,
+    tokenUsage: null,
+  });
 
   try {
     await createAgentStep(chatId, agentRun.id, 1, "Read user rate update request");
-    const prepared = await prepareLamasooRateUpdateProposal(
-      getServerConfig(),
-      sourceText,
-    );
+    const prepared = await prepareLamasooRateUpdateProposal(config, sourceText);
     await persistPreparedSteps(chatId, agentRun.id, prepared, 2);
     await persistToolCalls(chatId, agentRun.id, prepared.toolCalls);
     await persistActionProposal(chatId, agentRun.id, prepared);
+    logOperationEvent("agent.ai_interaction", "agent.ai_interaction.completed", {
+      chatId,
+      agentRunId: agentRun.id,
+      userPrompt: sourceText,
+      systemPromptVersion: "lamasoo-rate-update-v1",
+      selectedModel: config.agentModel || null,
+      toolCalls: prepared.toolCalls,
+      toolInputs: prepared.toolCalls.map((toolCall) => ({
+        name: toolCall.name,
+        input: toolCall.input,
+      })),
+      toolOutputs: prepared.toolCalls.map((toolCall) => ({
+        name: toolCall.name,
+        result: toolCall.result ?? toolCall.resultSummary,
+        status: toolCall.status,
+      })),
+      tokenUsage: null,
+      executionTimeMs: getDurationMs(agentStartedAt),
+      proposal: prepared.proposal,
+    });
 
     return getChatDetails(chatId);
   } catch (error) {
+    logOperationError(
+      "agent.ai_interaction",
+      "agent.ai_interaction.failed",
+      error,
+      {
+        chatId,
+        agentRunId: agentRun.id,
+        userPrompt: sourceText,
+        systemPromptVersion: "lamasoo-rate-update-v1",
+        selectedModel: config.agentModel || null,
+        tokenUsage: null,
+        executionTimeMs: getDurationMs(agentStartedAt),
+      },
+    );
     const message =
       error instanceof Error
         ? error.message
@@ -212,6 +289,14 @@ async function persistActionProposal(
       completedAt: new Date(),
     },
   });
+  logOperationEvent("proposal.generate", "proposal.generated", {
+    chatId,
+    agentRunId,
+    proposalId: actionProposal.id,
+    type: prepared.proposal.type,
+    affectedRowsCount: prepared.proposal.affectedRowsCount,
+    warnings: prepared.proposal.warnings,
+  });
 }
 
 async function createAgentStep(
@@ -222,7 +307,7 @@ async function createAgentStep(
   status: "COMPLETED" | "WARNING" | "ERROR" = "COMPLETED",
   detail?: unknown,
 ) {
-  return prisma.agentStep.create({
+  const agentStep = await prisma.agentStep.create({
     data: {
       chatId,
       agentRunId,
@@ -232,6 +317,15 @@ async function createAgentStep(
       detailJson: detail === undefined ? null : stringifyJson(detail),
     },
   });
+  logOperationEvent("agent.step", "agent.step.persisted", {
+    chatId,
+    agentRunId,
+    order,
+    label,
+    status,
+    detail,
+  });
+  return agentStep;
 }
 
 async function persistPreparedSteps(
@@ -269,6 +363,11 @@ async function persistToolCalls(
         status: toolCall.status,
         error: toolCall.error,
       },
+    });
+    logOperationEvent("agent.tool_call", "agent.tool_call.persisted", {
+      chatId,
+      agentRunId,
+      toolCall,
     });
   }
 }

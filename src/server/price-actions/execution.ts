@@ -9,6 +9,7 @@ import { parseJson, stringifyJson } from "../db/json";
 import { getServerConfig } from "../config";
 import { getBundle, upsertPriceCapacity } from "../lamasoo/client";
 import { findCurrentBundlePrice } from "../lamasoo/rate-update";
+import { logOperationEvent, withLoggedOperation } from "../logging";
 
 export type ProposalConflict = {
   rowId: string;
@@ -18,6 +19,14 @@ export type ProposalConflict = {
 };
 
 export async function executeConfirmedProposal(proposalId: string) {
+  return withLoggedOperation(
+    "proposal.execute",
+    { proposalId },
+    async () => executeConfirmedProposalInner(proposalId),
+  );
+}
+
+async function executeConfirmedProposalInner(proposalId: string) {
   const actionProposal = await prisma.actionProposal.findUnique({
     where: { id: proposalId },
   });
@@ -49,6 +58,15 @@ export async function executeConfirmedProposal(proposalId: string) {
     [],
   );
   const conflicts = await findConflicts(payload, oldValues);
+  logOperationEvent(
+    "proposal.conflict_check",
+    "proposal.conflict_check.completed",
+    {
+      proposalId,
+      conflictCount: conflicts.length,
+      conflicts,
+    },
+  );
   if (conflicts.length > 0) {
     return markProposalFailed(
       actionProposal.id,
@@ -57,7 +75,16 @@ export async function executeConfirmedProposal(proposalId: string) {
     );
   }
 
+  logOperationEvent("api.mutation", "lamasoo.price_capacity_upsert.started", {
+    proposalId,
+    payload,
+  });
   const result = await upsertPriceCapacity(getServerConfig(), payload);
+  logOperationEvent("api.mutation", "lamasoo.price_capacity_upsert.completed", {
+    proposalId,
+    payload,
+    result,
+  });
   return persistExecutionResult(
     actionProposal,
     "EXECUTED",
@@ -68,6 +95,14 @@ export async function executeConfirmedProposal(proposalId: string) {
 }
 
 export async function rejectProposal(proposalId: string) {
+  return withLoggedOperation(
+    "proposal.reject",
+    { proposalId },
+    async () => rejectProposalInner(proposalId),
+  );
+}
+
+async function rejectProposalInner(proposalId: string) {
   const actionProposal = await prisma.actionProposal.findUnique({
     where: { id: proposalId },
   });
@@ -109,6 +144,11 @@ export async function rejectProposal(proposalId: string) {
       },
     });
 
+    logOperationEvent("proposal.reject", "proposal.rejected", {
+      proposalId,
+      chatId: actionProposal.chatId,
+      executionId: execution.id,
+    });
     return execution;
   });
 }
@@ -165,6 +205,11 @@ async function findConflicts(
     payload.hotelId,
     payload.bundleId,
   );
+  logOperationEvent("proposal.conflict_check", "proposal.current_bundle.loaded", {
+    hotelId: payload.hotelId,
+    bundleId: payload.bundleId,
+    oldValueCount: oldValues.length,
+  });
   const conflicts: ProposalConflict[] = [];
 
   for (const oldValue of oldValues) {
@@ -198,7 +243,7 @@ async function persistExecutionResult(
   error: string | null,
   content: string,
 ) {
-  return prisma.$transaction(async (tx) => {
+  const execution = await prisma.$transaction(async (tx) => {
     const execution = await tx.actionExecution.create({
       data: {
         actionProposalId: actionProposal.id,
@@ -227,6 +272,14 @@ async function persistExecutionResult(
 
     return execution;
   });
+  logOperationEvent("proposal.execute", "proposal.execution.persisted", {
+    proposalId: actionProposal.id,
+    chatId: actionProposal.chatId,
+    status,
+    result,
+    error,
+  });
+  return execution;
 }
 
 async function markProposalFailed(
@@ -242,7 +295,7 @@ async function markProposalFailed(
     throw new Error("Action proposal was not found.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const execution = await prisma.$transaction(async (tx) => {
     const execution = await tx.actionExecution.create({
       data: {
         actionProposalId: proposalId,
@@ -275,4 +328,11 @@ async function markProposalFailed(
 
     return execution;
   });
+  logOperationEvent("proposal.execute", "proposal.execution_failed.persisted", {
+    proposalId,
+    chatId: actionProposal.chatId,
+    error,
+    conflicts,
+  });
+  return execution;
 }
