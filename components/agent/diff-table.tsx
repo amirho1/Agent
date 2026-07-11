@@ -3,28 +3,71 @@
 import type { ActionProposalDto } from "@/src/shared/chat-types";
 
 export function DiffTable({ proposal }: { proposal: ActionProposalDto }) {
-  const isRoomDiff = proposal.diffs.some((diff) => diff.entityType === "ROOM");
-
   return (
     <section className="min-h-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
       <div className="border-b border-slate-800 px-4 py-3">
-        <h2 className="text-sm font-semibold text-white">Diff</h2>
+        <h2 className="text-sm font-semibold text-white">Lamasoo Diff</h2>
       </div>
       {proposal.diffs.length === 0 ? (
-        <p className="p-4 text-sm text-slate-500">No changed fields.</p>
+        <p className="p-4 text-sm text-slate-500">No parsed price fields.</p>
       ) : (
         <div className="max-h-[52vh] overflow-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[1120px] text-left text-sm">
             <thead className="sticky top-0 bg-slate-900 text-xs text-slate-400">
-              {isRoomDiff ? <RoomHeader /> : <PriceHeader />}
+              <tr>
+                <th className="px-3 py-2">Hotel</th>
+                <th className="px-3 py-2">Room</th>
+                <th className="px-3 py-2">Rate Plan</th>
+                <th className="px-3 py-2">Date</th>
+                <th className="px-3 py-2">Price Type</th>
+                <th className="px-3 py-2">Old Price</th>
+                <th className="px-3 py-2">New Price</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Issues</th>
+              </tr>
             </thead>
             <tbody>
               {proposal.diffs.map((diff) => (
-                <DiffRow
-                  key={`${diff.rowId}-${diff.field}-${diff.action ?? "update"}`}
-                  diff={diff}
-                  isRoomDiff={isRoomDiff}
-                />
+                <tr
+                  key={`${diff.rowId}-${diff.field}`}
+                  className="border-t border-slate-800"
+                >
+                  <td className="px-3 py-2 text-slate-100">
+                    <div>{formatValue(diff.hotelName ?? null)}</div>
+                    <div className="text-xs text-slate-500">
+                      {formatValue(diff.hotelId ?? null)}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-slate-100">
+                    <div>{formatValue(diff.roomName ?? null)}</div>
+                    <div className="text-xs text-slate-500">
+                      {formatValue(diff.roomTypeProviderId ?? null)}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-slate-100">
+                    <div>{formatValue(diff.ratePlanName ?? null)}</div>
+                    <div className="text-xs text-slate-500">
+                      {formatValue(diff.ratePlanId ?? null)}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-slate-300">
+                    {formatValue(diff.date ?? null)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-300">{diff.field}</td>
+                  <td className="px-3 py-2 text-slate-500">
+                    {formatValue(diff.oldValue)}
+                  </td>
+                  <td className="px-3 py-2 font-medium text-emerald-300">
+                    {formatValue(diff.newValue)}
+                  </td>
+                  <td className="px-3 py-2 text-slate-300">
+                    {diff.status ?? "-"}
+                  </td>
+                  <td className="max-w-[280px] px-3 py-2 text-xs text-amber-100">
+                    {diff.issues?.map((issue) => issue.message).join(" ") ??
+                      "-"}
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -34,72 +77,10 @@ export function DiffTable({ proposal }: { proposal: ActionProposalDto }) {
   );
 }
 
-function RoomHeader() {
-  return (
-    <tr>
-      <th className="px-3 py-2">Action</th>
-      <th className="px-3 py-2">Room ID</th>
-      <th className="px-3 py-2">Field</th>
-      <th className="px-3 py-2">Old Value</th>
-      <th className="px-3 py-2">New Value</th>
-    </tr>
-  );
-}
-
-function PriceHeader() {
-  return (
-    <tr>
-      <th className="px-3 py-2">Room</th>
-      <th className="px-3 py-2">Date</th>
-      <th className="px-3 py-2">Field</th>
-      <th className="px-3 py-2">Old Value</th>
-      <th className="px-3 py-2">New Value</th>
-    </tr>
-  );
-}
-
-function DiffRow({
-  diff,
-  isRoomDiff,
-}: {
-  diff: ActionProposalDto["diffs"][number];
-  isRoomDiff: boolean;
-}) {
-  if (isRoomDiff) {
-    return (
-      <tr className="border-t border-slate-800">
-        <td className="px-3 py-2 text-slate-100">{diff.action ?? "UPDATE"}</td>
-        <td className="px-3 py-2 text-slate-300">{diff.rowId}</td>
-        <td className="px-3 py-2 text-slate-300">{diff.field}</td>
-        <td className="px-3 py-2 text-slate-500">
-          {formatValue(diff.oldValue)}
-        </td>
-        <td className="px-3 py-2 font-medium text-emerald-300">
-          {formatValue(diff.newValue)}
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr className="border-t border-slate-800">
-      <td className="px-3 py-2 text-slate-100">
-        {diff.roomName ?? diff.roomTypeProviderId}
-      </td>
-      <td className="px-3 py-2 text-slate-300">{diff.date}</td>
-      <td className="px-3 py-2 text-slate-300">{diff.field}</td>
-      <td className="px-3 py-2 text-slate-500">
-        {formatValue(diff.oldValue)}
-      </td>
-      <td className="px-3 py-2 font-medium text-emerald-300">
-        {formatValue(diff.newValue)}
-      </td>
-    </tr>
-  );
-}
-
-function formatValue(value: string | number | boolean | null): string {
-  if (value === null) {
+function formatValue(
+  value: string | number | boolean | null | undefined,
+): string {
+  if (value === null || value === undefined || value === "") {
     return "-";
   }
 

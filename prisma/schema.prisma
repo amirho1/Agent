@@ -136,7 +136,7 @@ model ActionProposal {
   assumptionsJson   String
   warningsJson      String
   diffsJson         String
-  pmsPayloadJson    String
+  lamasooPayloadJson String           @map("pmsPayloadJson")
   toolCallsJson     String
   oldValuesJson     String
   createdAt         DateTime          @default(now())

@@ -12,26 +12,14 @@ export type ServerConfig = {
   ragKbsTenantId: string;
   ragKbsKnowledgeBaseId: string;
   ragKbsApiKey: string;
-  dummyPmsBaseUrl: string;
-  dummyPmsAuthToken: string;
+  lamasooBaseUrl: string;
+  authorization: string;
 };
 
-/**
- * Read a string environment variable with a fallback value.
- * @param key - Environment variable name.
- * @param fallback - Fallback value.
- * @returns Environment variable value.
- */
 function readStringEnv(key: string, fallback: string): string {
   return process.env[key]?.trim() || fallback;
 }
 
-/**
- * Read a numeric environment variable with a fallback value.
- * @param key - Environment variable name.
- * @param fallback - Fallback value.
- * @returns Parsed number.
- */
 function readNumberEnv(key: string, fallback: number): number {
   const rawValue = process.env[key]?.trim();
   if (!rawValue) {
@@ -42,10 +30,10 @@ function readNumberEnv(key: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
-/**
- * Read server configuration for API routes and agent modules.
- * @returns Server configuration.
- */
+export function normalizeBaseUrl(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
 export function getServerConfig(): ServerConfig {
   return {
     appUrl: readStringEnv("APP_URL", "http://localhost:3001"),
@@ -70,22 +58,23 @@ export function getServerConfig(): ServerConfig {
     ragKbsTenantId: readStringEnv("RAG_KBS_TENANT_ID", "tenant_acme"),
     ragKbsKnowledgeBaseId: readStringEnv("RAG_KBS_KNOWLEDGE_BASE_ID", ""),
     ragKbsApiKey: readStringEnv("RAG_KBS_API_KEY", ""),
-    dummyPmsBaseUrl: readStringEnv(
-      "DUMMY_PMS_BASE_URL",
-      "http://localhost:4000",
+    lamasooBaseUrl: normalizeBaseUrl(
+      readStringEnv("LAMASOO_BASE_URL", "https://whale.lamasoo.com/"),
     ),
-    dummyPmsAuthToken: readStringEnv("DUMMY_PMS_AUTH_TOKEN", "test-token"),
+    authorization: readStringEnv("AUTHORIZATION", ""),
   };
 }
 
-/**
- * Ensure OpenRouter credentials required for chat are configured.
- * @param config - Server configuration.
- */
+export function assertLamasooConfig(config: ServerConfig): void {
+  if (!config.authorization) {
+    throw new Error("Lamasoo API token is not configured. Set AUTHORIZATION.");
+  }
+}
+
 export function assertAgentLlmConfig(config: ServerConfig): void {
   if (!config.openRouterApiKey || !config.agentModel) {
     throw new Error(
-      "Agent LLM is not configured. Set OPENROUTER_API_KEY and AGENT_MODEL in the Agent environment.",
+      "Agent LLM is not configured. Set OPENROUTER_API_KEY and AGENT_MODEL.",
     );
   }
 }

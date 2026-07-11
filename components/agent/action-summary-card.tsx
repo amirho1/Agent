@@ -28,8 +28,8 @@ export function ActionSummaryCard({
           <p className="mt-1 text-sm text-slate-400">{proposal.summary}</p>
         </div>
         <div className="grid grid-cols-2 gap-4 text-right text-sm">
-          <Metric label="Rows" value={String(proposal.affectedRowsCount)} />
-          <Metric label="Source" value="dummy-PMS" />
+          <Metric label="Items" value={String(proposal.affectedRowsCount)} />
+          <Metric label="Source" value="Lamasoo" />
         </div>
       </div>
 
@@ -48,6 +48,15 @@ export function ActionSummaryCard({
           ))}
         </div>
       ) : null}
+
+      <details className="mt-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-300">
+        <summary className="cursor-pointer text-slate-100">
+          Planned Lamasoo JSON payload
+        </summary>
+        <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap">
+          {JSON.stringify(proposal.lamasooPayload, null, 2)}
+        </pre>
+      </details>
 
       {isPending ? (
         <div className="mt-4 flex flex-wrap justify-end gap-2">

@@ -12,7 +12,7 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: "Agent",
-  description: "AI hotel operations agent for PMS price-capacity updates",
+  description: "AI hotel operations agent for Lamasoo rate-plan price updates",
 };
 
 export default function RootLayout({

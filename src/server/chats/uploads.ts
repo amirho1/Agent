@@ -1,8 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { prisma } from "../db/prisma";
-import { stringifyJson } from "../db/json";
-import { getChatDetails } from "./service";
+import { processUploadedRateSheet } from "./service";
 
 const uploadDir = join(process.cwd(), "uploads");
 
@@ -16,25 +15,16 @@ export async function storeChatUpload(chatId: string, file: File) {
     throw new Error("Chat was not found.");
   }
 
+  const text = await file.text();
   await mkdir(uploadDir, { recursive: true });
   const bytes = new Uint8Array(await file.arrayBuffer());
   const storedFileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
   const path = join(uploadDir, storedFileName);
   await writeFile(path, bytes);
 
-  const message = await prisma.message.create({
-    data: {
-      chatId,
-      role: "user",
-      content: `Uploaded ${file.name}`,
-      metadataJson: stringifyJson({ upload: true }),
-    },
-  });
-
   await prisma.uploadedFile.create({
     data: {
       chatId,
-      messageId: message.id,
       fileName: file.name,
       contentType: file.type || inferContentType(file.name),
       size: file.size,
@@ -42,16 +32,13 @@ export async function storeChatUpload(chatId: string, file: File) {
     },
   });
 
-  await prisma.message.create({
-    data: {
-      chatId,
-      role: "assistant",
-      content:
-        "File uploaded. For this MVP, percentage price updates are prepared from live PMS rows; uploaded text can be kept with the chat for review context.",
+  return processUploadedRateSheet(chatId, `Uploaded ${file.name}`, text, {
+    upload: {
+      fileName: file.name,
+      contentType: file.type || inferContentType(file.name),
+      size: file.size,
     },
   });
-
-  return getChatDetails(chatId);
 }
 
 export function isSupportedUpload(file: Pick<File, "name">): boolean {

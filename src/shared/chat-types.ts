@@ -49,7 +49,7 @@ export type ActionProposalDto = {
   assumptions: string[];
   warnings: string[];
   diffs: AgentActionDiff[];
-  pmsPayload: AgentActionProposal["pmsPayload"];
+  lamasooPayload: AgentActionProposal["lamasooPayload"];
   createdAt: string;
   updatedAt: string;
   executions: ActionExecutionDto[];

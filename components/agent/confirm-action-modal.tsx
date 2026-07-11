@@ -17,13 +17,15 @@ export function ConfirmActionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
       <div className="w-full max-w-lg rounded-lg border border-slate-800 bg-slate-950 p-5 shadow-xl">
-        <h2 className="text-lg font-semibold text-white">Confirm PMS Action</h2>
+        <h2 className="text-lg font-semibold text-white">
+          Confirm Lamasoo Action
+        </h2>
         <p className="mt-2 text-sm text-slate-300">
-          This will affect {proposal.affectedRowsCount} PMS rows for hotel{" "}
+          This will send {proposal.affectedRowsCount} Lamasoo update items for hotel{" "}
           {proposal.hotelId}.
         </p>
         <p className="mt-2 text-sm text-slate-500">
-          The server will re-check current PMS values before sending the update.
+          The server will re-check current Lamasoo values before sending the update.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button
@@ -40,7 +42,7 @@ export function ConfirmActionModal({
             disabled={isBusy}
             className="bg-emerald-500 text-slate-950 hover:bg-emerald-400"
           >
-            Confirm Action
+            Confirm Update
           </Button>
         </div>
       </div>

@@ -1,268 +1,502 @@
 import type {
-  ExtractedDateRange,
   ExtractedRateSheet,
-  ExtractedRateSheetRoom,
+  ExtractedRateSheetRow,
   ValidationIssue,
-} from "../../shared/agent-types";
+} from "@/src/shared/agent-types";
 import { isIsoDate } from "../price-updates/dates";
 
-type ParsedRow = Record<string, string>;
-
-const requiredColumns = ["from", "to", "roomName"];
-
-const columnAliases: Record<string, string> = {
-  from: "from",
-  startdate: "from",
-  start: "from",
-  از: "from",
-  to: "to",
-  enddate: "to",
-  end: "to",
-  تا: "to",
-  roomname: "roomName",
-  room: "roomName",
-  roomtype: "roomName",
-  اتاق: "roomName",
-  rateplanname: "ratePlanName",
-  rateplan: "ratePlanName",
-  plan: "ratePlanName",
-  پلن: "ratePlanName",
-  boardprice: "boardPrice",
-  board: "boardPrice",
-  displayprice: "displayPrice",
-  display: "displayPrice",
-  payableprice: "payablePrice",
-  payable: "payablePrice",
-  extraguestprice: "extraGuestPrice",
-  extraguest: "extraGuestPrice",
-  count: "count",
-  capacity: "count",
-  ظرفیت: "count",
+type ParsedTable = {
+  headers: string[];
+  rows: string[][];
 };
 
-/**
- * Parse text or Markdown rate sheets into the normalized MVP shape.
- * @param text - Uploaded text content.
- * @returns Extracted rate sheet and parser issues.
- */
+type ParsedRow = Record<string, string>;
+type MetadataKey = Exclude<keyof ExtractedRateSheet, "rows">;
+
+const metadataAliases: Record<string, MetadataKey> = {
+  hotel: "hotelName",
+  hotelname: "hotelName",
+  نامهتل: "hotelName",
+  title: "title",
+  ratesheettitle: "title",
+  ratetitle: "title",
+  عنواننرخنامه: "title",
+  bundle: "title",
+  bundlename: "title",
+  from: "from",
+  start: "from",
+  startdate: "from",
+  تاریخشروع: "from",
+  از: "from",
+  to: "to",
+  end: "to",
+  enddate: "to",
+  تاریخپایان: "to",
+  تا: "to",
+  currency: "currency",
+  واحدپول: "currency",
+};
+
+const rowAliases: Record<string, string> = {
+  room: "roomName",
+  roomname: "roomName",
+  roomtype: "roomName",
+  ناماتاق: "roomName",
+  اتاق: "roomName",
+  rateplan: "ratePlanName",
+  rateplanname: "ratePlanName",
+  plan: "ratePlanName",
+  mealtype: "ratePlanName",
+  نرخنامه: "ratePlanName",
+  وعدهغذایی: "ignored",
+  boardprice: "boardPrice",
+  board: "boardPrice",
+  قیمتبرد: "boardPrice",
+  displayprice: "displayPrice",
+  display: "displayPrice",
+  قیمتنمایش: "displayPrice",
+  payableprice: "payablePrice",
+  payable: "payablePrice",
+  قیمتقابلپرداخت: "payablePrice",
+  price: "genericPrice",
+  قیمت: "genericPrice",
+  extraguestprice: "ignored",
+  extraguest: "ignored",
+  قیمتنفراضافه: "ignored",
+  count: "ignored",
+  capacity: "ignored",
+  تعداداتاق: "ignored",
+  ظرفیتآنلاین: "ignored",
+  تعدادنفرات: "ignored",
+  نفراضافهمجاز: "ignored",
+};
+
 export function parseRateSheetText(text: string): {
   extractedRateSheet: ExtractedRateSheet;
   issues: ValidationIssue[];
 } {
-  const rows = parseDelimitedRows(text);
-  const issues = validateParsedRows(rows);
-  const dateRanges = buildDateRanges(rows);
+  const issues: ValidationIssue[] = [];
+  const tables = parseMarkdownTables(text);
+  const extractedRateSheet: ExtractedRateSheet = {
+    ...parseMetadata(text, tables),
+    rows: [],
+  };
+
+  const tableRows = parseRowsFromTables(tables, issues);
+  const fallbackRows = tableRows.length === 0 ? parseRowsFromPlainText(text) : [];
+  extractedRateSheet.rows = tableRows.length > 0 ? tableRows : fallbackRows;
+
+  extractedRateSheet.from = normalizeDate(extractedRateSheet.from);
+  extractedRateSheet.to = normalizeDate(extractedRateSheet.to);
+  if (extractedRateSheet.from && !extractedRateSheet.to) {
+    extractedRateSheet.to = extractedRateSheet.from;
+  }
+
+  validateExtractedSheet(extractedRateSheet, issues);
 
   return {
-    extractedRateSheet: {
-      dateRanges,
-    },
+    extractedRateSheet,
     issues,
   };
 }
 
-/**
- * Parse Markdown table, tab-delimited text, or comma-delimited text rows.
- * @param text - Uploaded text.
- * @returns Parsed rows.
- */
-function parseDelimitedRows(text: string): ParsedRow[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith("#"));
+function parseMetadata(
+  text: string,
+  tables: ParsedTable[],
+): Omit<ExtractedRateSheet, "rows"> {
+  const metadata: Omit<ExtractedRateSheet, "rows"> = {};
+  const normalizedText = toEnglishDigits(text);
 
-  const tableLines = lines.filter((line) => line.includes("|"));
-  if (tableLines.length >= 2) {
-    return parseRows(tableLines, "|");
+  for (const table of tables) {
+    if (table.rows.length !== 1) {
+      continue;
+    }
+
+    table.headers.forEach((header, index) => {
+      const target = metadataAliases[normalizeKey(header)];
+      const value = table.rows[0]?.[index]?.trim();
+      if (target && value) {
+        metadata[target] = value;
+      }
+    });
   }
 
-  const tabLines = lines.filter((line) => line.includes("\t"));
-  if (tabLines.length >= 2) {
-    return parseRows(tabLines, "\t");
+  const linePatterns: Array<[MetadataKey, RegExp]> = [
+    ["hotelName", /(?:hotel|هتل)\s*[:=]\s*(.+)/i],
+    ["title", /(?:rate\s*sheet|bundle|title|نرخنامه)\s*[:=]\s*(.+)/i],
+    ["from", /(?:from|start|از)\s*[:=]\s*([0-9۰-۹٠-٩/-]+)/i],
+    ["to", /(?:to|end|تا)\s*[:=]\s*([0-9۰-۹٠-٩/-]+)/i],
+    ["currency", /(?:currency|واحد\s*پول)\s*[:=]\s*(.+)/i],
+  ];
+
+  for (const [key, pattern] of linePatterns) {
+    if (metadata[key]) {
+      continue;
+    }
+
+    const match = normalizedText.match(pattern);
+    if (match?.[1]) {
+      metadata[key] = match[1].split(/\r?\n/)[0].trim();
+    }
   }
 
-  return parseRows(lines, ",");
+  return metadata;
 }
 
-/**
- * Parse lines with the selected delimiter.
- * @param lines - Source lines.
- * @param delimiter - Delimiter.
- * @returns Parsed rows.
- */
-function parseRows(lines: string[], delimiter: string): ParsedRow[] {
-  const headerLine = lines[0];
-  if (!headerLine) {
-    return [];
-  }
+function parseRowsFromTables(
+  tables: ParsedTable[],
+  issues: ValidationIssue[],
+): ExtractedRateSheetRow[] {
+  return tables.flatMap((table) => {
+    const headers = table.headers.map((header) => rowAliases[normalizeKey(header)]);
+    if (!headers.includes("roomName") || !headers.includes("ratePlanName")) {
+      return [];
+    }
 
-  const headers = splitRow(headerLine, delimiter).map(normalizeColumnName);
-  const dataLines = lines.slice(1).filter((line) => !isMarkdownSeparator(line));
-
-  return dataLines.map((line) => {
-    const values = splitRow(line, delimiter);
-    return headers.reduce<ParsedRow>((row, header, index) => {
-      row[header] = values[index]?.trim() ?? "";
-      return row;
-    }, {});
+    return table.rows.map((values, index) =>
+      createExtractedRow(`row-${index + 1}`, headers, values, issues),
+    );
   });
 }
 
-/**
- * Split a delimited row and handle Markdown table edge pipes.
- * @param line - Source line.
- * @param delimiter - Delimiter.
- * @returns Cell values.
- */
-function splitRow(line: string, delimiter: string): string[] {
-  const normalizedLine =
-    delimiter === "|" ? line.replace(/^\|/, "").replace(/\|$/, "") : line;
+function parseRowsFromPlainText(text: string): ExtractedRateSheetRow[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 
-  return normalizedLine.split(delimiter).map((cell) => cell.trim());
+  return lines.flatMap((line, index) => {
+    if (!/(?:room|اتاق|RO|BB|HB|FB|UAI)/i.test(line)) {
+      return [];
+    }
+
+    const row: ExtractedRateSheetRow = {
+      rowId: `row-${index + 1}`,
+      roomName: extractValue(line, /(?:room|اتاق)\s*[:=]\s*([^,;]+)/i) ?? "",
+      ratePlanName:
+        extractValue(line, /(?:rate\s*plan|plan|نرخنامه)\s*[:=]\s*([^,;]+)/i) ??
+        extractValue(line, /\b(RO|BB|HB|FB|UAI)\b/i) ??
+        "",
+      boardPrice: parseOptionalNumber(
+        extractValue(line, /(?:boardPrice|board\s*price|قیمت\s*برد)\s*[:=]\s*([^,;]+)/i),
+      ),
+      displayPrice: parseOptionalNumber(
+        extractValue(line, /(?:displayPrice|display\s*price|قیمت\s*نمایش)\s*[:=]\s*([^,;]+)/i),
+      ),
+      payablePrice: parseOptionalNumber(
+        extractValue(line, /(?:payablePrice|payable\s*price|قیمت\s*قابل\s*پرداخت)\s*[:=]\s*([^,;]+)/i),
+      ),
+      genericPrice: parseOptionalNumber(
+        extractValue(line, /(?:^|[,;])\s*(?:price|قیمت)\s*[:=]\s*([^,;]+)/i),
+      ),
+      ignoredFields: [],
+    };
+
+    return row.roomName || row.ratePlanName ? [row] : [];
+  });
 }
 
-/**
- * Normalize a source column name to the MVP canonical column.
- * @param value - Source column name.
- * @returns Canonical column name.
- */
-function normalizeColumnName(value: string): string {
-  const key = normalizeText(value);
-  return columnAliases[key] ?? key;
+function createExtractedRow(
+  rowId: string,
+  headers: Array<string | undefined>,
+  values: string[],
+  issues: ValidationIssue[],
+): ExtractedRateSheetRow {
+  const row: ExtractedRateSheetRow = {
+    rowId,
+    roomName: "",
+    ratePlanName: "",
+    ignoredFields: [],
+  };
+
+  headers.forEach((header, index) => {
+    const value = values[index]?.trim();
+    if (!header || !value) {
+      return;
+    }
+
+    if (header === "ignored") {
+      row.ignoredFields.push(values[index] ?? "");
+      return;
+    }
+
+    if (header === "roomName" || header === "ratePlanName") {
+      row[header] = value;
+      return;
+    }
+
+    const numberValue = parseOptionalNumber(value);
+    if (numberValue === undefined) {
+      issues.push({
+        level: "error",
+        rowId,
+        field: header,
+        message: `${header} must be a valid number.`,
+      });
+      return;
+    }
+
+    row[header as "boardPrice" | "displayPrice" | "payablePrice"] =
+      numberValue;
+  });
+
+  return row;
 }
 
-/**
- * Check if a Markdown table separator row should be ignored.
- * @param line - Source line.
- * @returns True when line is a separator.
- */
+function validateExtractedSheet(
+  sheet: ExtractedRateSheet,
+  issues: ValidationIssue[],
+): void {
+  if (!sheet.hotelName?.trim()) {
+    issues.push({
+      level: "error",
+      field: "hotelName",
+      message: "Hotel name is required.",
+    });
+  }
+
+  if (!sheet.title?.trim()) {
+    issues.push({
+      level: "error",
+      field: "title",
+      message: "Rate-sheet title or bundle name is required.",
+    });
+  }
+
+  if (!sheet.from || !isIsoDate(sheet.from)) {
+    issues.push({
+      level: "error",
+      field: "from",
+      message: "Start date is required and must be ISO or Jalali.",
+    });
+  }
+
+  if (!sheet.to || !isIsoDate(sheet.to)) {
+    issues.push({
+      level: "error",
+      field: "to",
+      message: "End date is required and must be ISO or Jalali.",
+    });
+  }
+
+  if (sheet.rows.length === 0) {
+    issues.push({
+      level: "error",
+      message: "No supported rate-plan price rows were found.",
+    });
+  }
+
+  for (const row of sheet.rows) {
+    if (!row.roomName.trim()) {
+      issues.push({
+        level: "error",
+        rowId: row.rowId,
+        field: "roomName",
+        message: "Room name is required.",
+      });
+    }
+
+    if (!row.ratePlanName.trim()) {
+      issues.push({
+        level: "error",
+        rowId: row.rowId,
+        field: "ratePlanName",
+        message: "Rate plan is required.",
+      });
+    }
+
+    if (row.genericPrice !== undefined) {
+      issues.push({
+        level: "error",
+        rowId: row.rowId,
+        field: "price",
+        message:
+          "Generic price is ambiguous. Use boardPrice, displayPrice, or payablePrice.",
+      });
+    }
+
+    if (
+      row.boardPrice === undefined &&
+      row.displayPrice === undefined &&
+      row.payablePrice === undefined &&
+      row.genericPrice === undefined
+    ) {
+      issues.push({
+        level: "error",
+        rowId: row.rowId,
+        field: "price",
+        message: "At least one core price field is required.",
+      });
+    }
+  }
+}
+
+function parseMarkdownTables(text: string): ParsedTable[] {
+  const lines = text.split(/\r?\n/);
+  const tables: ParsedTable[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const header = lines[index]?.trim();
+    const separator = lines[index + 1]?.trim();
+    if (!header?.includes("|") || !separator || !isMarkdownSeparator(separator)) {
+      index += 1;
+      continue;
+    }
+
+    const rows: string[][] = [];
+    index += 2;
+    while (index < lines.length && lines[index]?.includes("|")) {
+      const line = lines[index]?.trim();
+      if (line && !isMarkdownSeparator(line)) {
+        rows.push(splitMarkdownRow(line));
+      }
+      index += 1;
+    }
+
+    tables.push({
+      headers: splitMarkdownRow(header),
+      rows,
+    });
+  }
+
+  return tables;
+}
+
+function splitMarkdownRow(line: string): string[] {
+  return line
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
 function isMarkdownSeparator(line: string): boolean {
   return /^[\s|:-]+$/.test(line);
 }
 
-/**
- * Build normalized date ranges from parsed rows.
- * @param rows - Parsed source rows.
- * @returns Extracted date ranges.
- */
-function buildDateRanges(rows: ParsedRow[]): ExtractedDateRange[] {
-  const ranges = new Map<string, ExtractedRateSheetRoom[]>();
-
-  rows.forEach((row, index) => {
-    const from = row.from?.trim() ?? "";
-    const to = row.to?.trim() || from;
-    const key = `${from}:${to}`;
-    const rooms = ranges.get(key) ?? [];
-    rooms.push({
-      rowId: `row-${index + 1}`,
-      roomName: row.roomName?.trim() ?? "",
-      ratePlanName: row.ratePlanName?.trim() || undefined,
-      boardPrice: parseOptionalNumber(row.boardPrice),
-      displayPrice: parseOptionalNumber(row.displayPrice),
-      payablePrice: parseOptionalNumber(row.payablePrice),
-      extraGuestPrice: parseOptionalNumber(row.extraGuestPrice),
-      count: parseOptionalNumber(row.count),
-    });
-    ranges.set(key, rooms);
-  });
-
-  return Array.from(ranges.entries()).map(([key, rooms]) => {
-    const [from, to] = key.split(":");
-    return {
-      from,
-      to,
-      rooms,
-    };
-  });
-}
-
-/**
- * Validate parsed row structure and values.
- * @param rows - Parsed rows.
- * @returns Validation issues.
- */
-function validateParsedRows(rows: ParsedRow[]): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-
-  if (rows.length === 0) {
-    return [
-      {
-        level: "error",
-        message:
-          "The uploaded file did not contain a supported table. Use text or Markdown with from, to, roomName, and price columns.",
-      },
-    ];
-  }
-
-  for (const column of requiredColumns) {
-    if (!(column in rows[0])) {
-      issues.push({
-        level: "error",
-        field: column,
-        message: `Missing required column: ${column}`,
-      });
-    }
-  }
-
-  rows.forEach((row, index) => {
-    const rowId = `row-${index + 1}`;
-    if (!isIsoDate(row.from)) {
-      issues.push({
-        level: "error",
-        rowId,
-        field: "from",
-        message: "from must use YYYY-MM-DD format.",
-      });
-    }
-
-    if (row.to && !isIsoDate(row.to)) {
-      issues.push({
-        level: "error",
-        rowId,
-        field: "to",
-        message: "to must use YYYY-MM-DD format.",
-      });
-    }
-
-    if (!row.roomName?.trim()) {
-      issues.push({
-        level: "error",
-        rowId,
-        field: "roomName",
-        message: "roomName is required.",
-      });
-    }
-  });
-
-  return issues;
-}
-
-/**
- * Parse an optional number from a table cell.
- * @param value - Cell value.
- * @returns Parsed number or undefined.
- */
-function parseOptionalNumber(value: string | undefined): number | undefined {
+export function normalizeDate(value: string | undefined): string | undefined {
   if (!value?.trim()) {
     return undefined;
   }
 
-  const normalizedValue = value.replace(/[,،\s]/g, "");
+  const normalizedValue = toEnglishDigits(value).trim().replace(/\//g, "-");
+  const parts = normalizedValue.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return normalizedValue;
+  }
+
+  const [year, month, day] = parts;
+  if (year > 1700) {
+    const maybeIso: unknown = normalizedValue;
+    return isIsoDate(maybeIso) ? maybeIso : normalizedValue;
+  }
+
+  const gregorian = jalaliToGregorian(year, month, day);
+  return [
+    String(gregorian.year).padStart(4, "0"),
+    String(gregorian.month).padStart(2, "0"),
+    String(gregorian.day).padStart(2, "0"),
+  ].join("-");
+}
+
+export function parseOptionalNumber(value: string | undefined): number | undefined {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const normalizedValue = toEnglishDigits(value)
+    .replace(/[,%،\s]/g, "")
+    .trim();
   const numberValue = Number(normalizedValue);
   return Number.isFinite(numberValue) ? numberValue : undefined;
 }
 
-/**
- * Normalize text for column alias matching.
- * @param value - Input value.
- * @returns Normalized value.
- */
-function normalizeText(value: string): string {
+export function toEnglishDigits(value: string): string {
+  return value.replace(/[۰-۹٠-٩]/g, (digit) => {
+    const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
+    const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
+    const persianIndex = persianDigits.indexOf(digit);
+    if (persianIndex >= 0) {
+      return String(persianIndex);
+    }
+
+    return String(arabicDigits.indexOf(digit));
+  });
+}
+
+function normalizeKey(value: string): string {
   return value
     .trim()
     .toLowerCase()
     .replace(/[ي]/g, "ی")
     .replace(/[ك]/g, "ک")
-    .replace(/[\s_\-.]/g, "");
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function extractValue(line: string, pattern: RegExp): string | undefined {
+  return line.match(pattern)?.[1]?.trim();
+}
+
+function jalaliToGregorian(
+  jy: number,
+  jm: number,
+  jd: number,
+): { year: number; month: number; day: number } {
+  let days =
+    -355668 +
+    365 * (jy + 1595) +
+    div(jy + 1595, 33) * 8 +
+    div(((jy + 1595) % 33) + 3, 4) +
+    jd +
+    (jm < 7 ? (jm - 1) * 31 : (jm - 7) * 30 + 186);
+  let year = 400 * div(days, 146097);
+  days %= 146097;
+
+  if (days > 36524) {
+    year += 100 * div(days - 1, 36524);
+    days = (days - 1) % 36524;
+    if (days >= 365) {
+      days += 1;
+    }
+  }
+
+  year += 4 * div(days, 1461);
+  days %= 1461;
+  if (days > 365) {
+    year += div(days - 1, 365);
+    days = (days - 1) % 365;
+  }
+
+  let dayOfYear = days + 1;
+  const monthLengths = [
+    0,
+    31,
+    isGregorianLeapYear(year) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  let month = 1;
+  while (month <= 12 && dayOfYear > monthLengths[month]) {
+    dayOfYear -= monthLengths[month];
+    month += 1;
+  }
+
+  return { year, month, day: dayOfYear };
+}
+
+function div(left: number, right: number): number {
+  return Math.floor(left / right);
+}
+
+function isGregorianLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
