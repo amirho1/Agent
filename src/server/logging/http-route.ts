@@ -28,8 +28,7 @@ export function withApiLogging<TParams extends RouteParams = RouteParams>(
       getHeader(request, "x-request-id") ??
       getHeader(request, "x-correlation-id") ??
       crypto.randomUUID();
-    const correlationId =
-      getHeader(request, "x-correlation-id") ?? requestId;
+    const correlationId = getHeader(request, "x-correlation-id") ?? requestId;
     const routeParams = await resolveRouteParams(context);
     const userId = getHeader(request, "x-user-id");
     const organizationId = getHeader(request, "x-organization-id");
@@ -155,15 +154,16 @@ export async function readRequestBodyForLog(
       return sanitizeForLogging(formDataToObject(formData));
     }
 
-    if (contentType.includes("application/json") || contentType.includes("+json")) {
+    if (
+      contentType.includes("application/json") ||
+      contentType.includes("+json")
+    ) {
       return sanitizeForLogging(await clone.json());
     }
 
     const text = await clone.text();
     if (contentType.includes("application/x-www-form-urlencoded")) {
-      return sanitizeForLogging(
-        queryParamsToObject(new URLSearchParams(text)),
-      );
+      return sanitizeForLogging(queryParamsToObject(new URLSearchParams(text)));
     }
 
     return sanitizeForLogging(text);

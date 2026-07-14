@@ -16,6 +16,9 @@ export function ActionSummaryCard({
   isBusy?: boolean;
 }) {
   const isPending = proposal.status === "PENDING";
+  const proposalIssues = proposal.validationIssues.filter(
+    issue => issue.level === "error" && !issue.rowId,
+  );
 
   return (
     <section className="rounded-lg border border-slate-800 bg-slate-950 p-4">
@@ -29,13 +32,26 @@ export function ActionSummaryCard({
         </div>
         <div className="grid grid-cols-2 gap-4 text-right text-sm">
           <Metric label="Items" value={String(proposal.affectedRowsCount)} />
+          <Metric label="Hotel" value={formatMetricValue(proposal.hotelId)} />
+          <Metric label="Bundle" value={formatMetricValue(proposal.bundleId)} />
           <Metric label="Source" value="Lamasoo" />
         </div>
       </div>
 
+      {proposalIssues.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-100">
+          {proposalIssues.map(issue => (
+            <p key={`${issue.field ?? "proposal"}-${issue.message}`}>
+              {issue.field ? `${issue.field}: ` : ""}
+              {issue.message}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
       {proposal.assumptions.length > 0 ? (
         <div className="mt-4 space-y-1 text-xs text-slate-400">
-          {proposal.assumptions.map((assumption) => (
+          {proposal.assumptions.map(assumption => (
             <p key={assumption}>{assumption}</p>
           ))}
         </div>
@@ -43,16 +59,14 @@ export function ActionSummaryCard({
 
       {proposal.warnings.length > 0 ? (
         <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
-          {proposal.warnings.map((warning) => (
+          {proposal.warnings.map(warning => (
             <p key={warning}>{warning}</p>
           ))}
         </div>
       ) : null}
 
       <details className="mt-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-xs text-slate-300">
-        <summary className="cursor-pointer text-slate-100">
-          Planned Lamasoo JSON payload
-        </summary>
+        <summary className="cursor-pointer text-slate-100">Planned Lamasoo JSON payload</summary>
         <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap">
           {JSON.stringify(proposal.lamasooPayload, null, 2)}
         </pre>
@@ -60,12 +74,7 @@ export function ActionSummaryCard({
 
       {isPending ? (
         <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onReject}
-            disabled={isBusy}
-          >
+          <Button type="button" variant="outline" onClick={onReject} disabled={isBusy}>
             <X className="size-4" />
             Reject
           </Button>
@@ -91,4 +100,8 @@ function Metric({ label, value }: { label: string; value: string }) {
       <div className="text-sm font-medium text-slate-100">{value}</div>
     </div>
   );
+}
+
+function formatMetricValue(value: string | number | undefined): string {
+  return value === undefined || value === "" ? "-" : String(value);
 }

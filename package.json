@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "pnpm prisma:generate && next dev",
+    "build": "pnpm prisma:generate && next build",
     "start": "next start",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -12,8 +12,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "node scripts/init-db.mjs",
     "prisma:studio": "prisma studio",
-    "typecheck": "tsc --noEmit",
-    "test": "pnpm db:init && vitest run",
+    "typecheck": "pnpm prisma:generate && tsc --noEmit",
+    "test": "pnpm prisma:generate && pnpm db:init && vitest run",
     "clean": "next clean"
   },
   "dependencies": {

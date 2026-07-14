@@ -100,8 +100,14 @@ export async function prepareLamasooRateUpdateProposal(
   const hotels = await callTool(toolCalls, "lamasoo.listHotels", {}, () =>
     listHotels(config),
   );
-  const hotelSelection = selectEntity(extractedRateSheet.hotelName ?? "", hotels);
-  const selectionIssues = createSelectionIssues(extractedRateSheet, hotelSelection);
+  const hotelSelection = selectEntity(
+    extractedRateSheet.hotelName ?? "",
+    hotels,
+  );
+  const selectionIssues = createSelectionIssues(
+    extractedRateSheet,
+    hotelSelection,
+  );
   let selectedData: SelectedLamasooData = {
     hotel: hotelSelection.value,
     rooms: [],
@@ -121,7 +127,11 @@ export async function prepareLamasooRateUpdateProposal(
         listBundles(config, hotelId),
       ),
     ]);
-    const bundleSelection = selectEntity(extractedRateSheet.title ?? "", bundles);
+    const relatedBundles = filterBundlesForHotel(bundles, hotelId);
+    const bundleSelection = selectEntity(
+      extractedRateSheet.title ?? "",
+      relatedBundles,
+    );
     selectedData = {
       hotel: hotelSelection.value,
       bundle: bundleSelection.value,
@@ -143,7 +153,9 @@ export async function prepareLamasooRateUpdateProposal(
     }
   }
 
-  const matchedRows = matchRows(extractedRateSheet, selectedData);
+  const matchedRows = hotelSelection.value
+    ? matchRows(extractedRateSheet, selectedData)
+    : [];
   logOperationEvent("rate_sheet.match", "rate_sheet.rows_matched", {
     matchedRows,
     selectedData,
@@ -199,6 +211,7 @@ export async function prepareLamasooRateUpdateProposal(
       "Date ranges are expanded into one Lamasoo upsert item per day.",
     ],
     warnings,
+    validationIssues,
     toolCalls: toolCalls.map(({ name, input, resultSummary }) => ({
       name,
       input,
@@ -328,6 +341,25 @@ function createBundleSelectionIssues(
   ];
 }
 
+/**
+ * Keep only bundles that are related to the selected hotel when Lamasoo provides that relationship.
+ * @param bundles - Bundle summaries returned by Lamasoo.
+ * @param hotelId - Selected hotel ID.
+ * @returns Bundles that can be safely considered for the selected hotel.
+ */
+function filterBundlesForHotel(
+  bundles: BundleSummary[],
+  hotelId: EntityId,
+): BundleSummary[] {
+  return bundles.filter((bundle) => {
+    const relatedHotelId = bundle.hotelProvider?.hotelId;
+
+    return (
+      relatedHotelId === undefined || String(relatedHotelId) === String(hotelId)
+    );
+  });
+}
+
 function matchRows(
   sheet: ExtractedRateSheet,
   selectedData: SelectedLamasooData,
@@ -358,7 +390,12 @@ function validateMatchedRows(
   const issues: ValidationIssue[] = [];
   const seen = new Set<string>();
 
-  if (!sheet.from || !sheet.to || !isIsoDate(sheet.from) || !isIsoDate(sheet.to)) {
+  if (
+    !sheet.from ||
+    !sheet.to ||
+    !isIsoDate(sheet.from) ||
+    !isIsoDate(sheet.to)
+  ) {
     return issues;
   }
 
@@ -439,14 +476,20 @@ function createDiffAndPayload(input: {
       (issue) => issue.rowId === row.rowId,
     );
     const rowHasBlockingIssue =
-      sheetHasBlockingIssue || rowIssues.some((issue) => issue.level === "error");
+      sheetHasBlockingIssue ||
+      rowIssues.some((issue) => issue.level === "error");
     const dates =
-      isIsoDate(row.from) && isIsoDate(row.to) ? expandDateRange(row.from, row.to) : [row.from];
+      isIsoDate(row.from) && isIsoDate(row.to)
+        ? expandDateRange(row.from, row.to)
+        : [row.from];
 
     for (const date of dates) {
       const diffCountBefore = diffs.length;
       const current = input.currentPrices.get(
-        buildCurrentPriceKey(row.roomMatch.matchedId, row.ratePlanMatch.matchedId),
+        buildCurrentPriceKey(
+          row.roomMatch.matchedId,
+          row.ratePlanMatch.matchedId,
+        ),
       );
       const changedFields = getChangedPriceFields(row, current);
 
@@ -456,12 +499,7 @@ function createDiffAndPayload(input: {
           continue;
         }
 
-        const oldValue = current?.[field] ?? null;
-        if (oldValue === null) {
-          warnings.add(
-            `${field} old value is unavailable for one or more matched bundle rows.`,
-          );
-        }
+        const oldValue = normalizeOldPriceValue(current?.[field]);
         oldValues.push({
           rowId: buildRowId(date, row),
           date,
@@ -484,11 +522,9 @@ function createDiffAndPayload(input: {
           newValue,
           status: rowHasBlockingIssue
             ? "error"
-            : oldValue === null
-              ? "new"
-              : oldValue === newValue
-                ? "unchanged"
-                : "changed",
+            : oldValue === newValue
+              ? "unchanged"
+              : "changed",
           issues: rowIssues,
         });
       }
@@ -558,11 +594,24 @@ function getChangedPriceFields(
       return false;
     }
 
-    return current?.[field] === undefined || current[field] !== newValue;
+    return normalizeOldPriceValue(current?.[field]) !== newValue;
   });
 }
 
-function indexCurrentPrices(bundle: BundleDetails): Map<string, RoomRateBundle> {
+/**
+ * Normalize a Lamasoo current price value for diffing and conflict checks.
+ * @param value - Raw current price value returned by Lamasoo.
+ * @returns The numeric current price, or 0 when the value is falsy or not a number.
+ */
+export function normalizeOldPriceValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value
+    ? value
+    : 0;
+}
+
+function indexCurrentPrices(
+  bundle: BundleDetails,
+): Map<string, RoomRateBundle> {
   const currentPrices = new Map<string, RoomRateBundle>();
   for (const ratePlan of bundle.ratePlans ?? []) {
     for (const roomRateBundle of ratePlan.roomRateBundles ?? []) {
@@ -600,7 +649,11 @@ function buildCurrentPriceKey(
 }
 
 function buildRowId(date: string, row: MatchedRateSheetRow): string {
-  return [date, row.roomMatch.matchedId ?? row.roomName, row.ratePlanMatch.matchedId ?? row.ratePlanName].join(":");
+  return [
+    date,
+    row.roomMatch.matchedId ?? row.roomName,
+    row.ratePlanMatch.matchedId ?? row.ratePlanName,
+  ].join(":");
 }
 
 function createSummary(itemCount: number, issueCount: number): string {

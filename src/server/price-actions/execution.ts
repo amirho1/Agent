@@ -8,7 +8,10 @@ import { prisma } from "../db/prisma";
 import { parseJson, stringifyJson } from "../db/json";
 import { getServerConfig } from "../config";
 import { getBundle, upsertPriceCapacity } from "../lamasoo/client";
-import { findCurrentBundlePrice } from "../lamasoo/rate-update";
+import {
+  findCurrentBundlePrice,
+  normalizeOldPriceValue,
+} from "../lamasoo/rate-update";
 import { logOperationEvent, withLoggedOperation } from "../logging";
 
 export type ProposalConflict = {
@@ -19,10 +22,8 @@ export type ProposalConflict = {
 };
 
 export async function executeConfirmedProposal(proposalId: string) {
-  return withLoggedOperation(
-    "proposal.execute",
-    { proposalId },
-    async () => executeConfirmedProposalInner(proposalId),
+  return withLoggedOperation("proposal.execute", { proposalId }, async () =>
+    executeConfirmedProposalInner(proposalId),
   );
 }
 
@@ -95,10 +96,8 @@ async function executeConfirmedProposalInner(proposalId: string) {
 }
 
 export async function rejectProposal(proposalId: string) {
-  return withLoggedOperation(
-    "proposal.reject",
-    { proposalId },
-    async () => rejectProposalInner(proposalId),
+  return withLoggedOperation("proposal.reject", { proposalId }, async () =>
+    rejectProposalInner(proposalId),
   );
 }
 
@@ -161,6 +160,7 @@ function parseStoredProposal(actionProposal: {
   affectedRowsCount: number;
   assumptionsJson: string;
   warningsJson: string;
+  validationIssuesJson: string;
   toolCallsJson: string;
   diffsJson: string;
   lamasooPayloadJson: string;
@@ -180,6 +180,10 @@ function parseStoredProposal(actionProposal: {
     affectedRowsCount: actionProposal.affectedRowsCount,
     assumptions: parseJson<string[]>(actionProposal.assumptionsJson, []),
     warnings: parseJson<string[]>(actionProposal.warningsJson, []),
+    validationIssues: parseJson<AgentActionProposal["validationIssues"]>(
+      actionProposal.validationIssuesJson,
+      [],
+    ),
     toolCalls: parseJson<AgentActionProposal["toolCalls"]>(
       actionProposal.toolCallsJson,
       [],
@@ -205,11 +209,15 @@ async function findConflicts(
     payload.hotelId,
     payload.bundleId,
   );
-  logOperationEvent("proposal.conflict_check", "proposal.current_bundle.loaded", {
-    hotelId: payload.hotelId,
-    bundleId: payload.bundleId,
-    oldValueCount: oldValues.length,
-  });
+  logOperationEvent(
+    "proposal.conflict_check",
+    "proposal.current_bundle.loaded",
+    {
+      hotelId: payload.hotelId,
+      bundleId: payload.bundleId,
+      oldValueCount: oldValues.length,
+    },
+  );
   const conflicts: ProposalConflict[] = [];
 
   for (const oldValue of oldValues) {
@@ -222,7 +230,7 @@ async function findConflicts(
       oldValue.roomTypeProviderId,
       oldValue.ratePlanId,
     );
-    const actual = latest?.[oldValue.field] ?? null;
+    const actual = normalizeOldPriceValue(latest?.[oldValue.field]);
     if (actual !== oldValue.value) {
       conflicts.push({
         rowId: oldValue.rowId,

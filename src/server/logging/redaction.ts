@@ -46,7 +46,9 @@ export function sanitizeForLogging<T>(value: T): T {
   return sanitizeValue(value, new WeakSet()) as T;
 }
 
-export function sanitizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
+export function sanitizeHeaders(
+  headers: HeadersInit | undefined,
+): Record<string, string> {
   const normalized = headersToRecord(headers);
 
   return Object.fromEntries(

@@ -163,7 +163,10 @@ function parseResponseBody(responseText: string, contentType: string): unknown {
     return null;
   }
 
-  if (contentType.includes("application/json") || contentType.includes("+json")) {
+  if (
+    contentType.includes("application/json") ||
+    contentType.includes("+json")
+  ) {
     try {
       return JSON.parse(responseText);
     } catch {

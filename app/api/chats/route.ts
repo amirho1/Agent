@@ -19,13 +19,16 @@ export const GET = withApiLogging("GET /api/chats", async function GET() {
   }
 });
 
-export const POST = withApiLogging("POST /api/chats", async function POST(
-  request,
-) {
-  try {
-    const body = createChatSchema.parse(await request.json().catch(() => ({})));
-    return NextResponse.json(await createChat(body.message));
-  } catch (error) {
-    return routeErrorResponse(error, "Chat creation request failed.", 400);
-  }
-});
+export const POST = withApiLogging(
+  "POST /api/chats",
+  async function POST(request) {
+    try {
+      const body = createChatSchema.parse(
+        await request.json().catch(() => ({})),
+      );
+      return NextResponse.json(await createChat(body.message));
+    } catch (error) {
+      return routeErrorResponse(error, "Chat creation request failed.", 400);
+    }
+  },
+);

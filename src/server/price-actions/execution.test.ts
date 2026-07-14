@@ -120,6 +120,60 @@ describe("Lamasoo proposal execution", function () {
     expect(updated?.status).toBe("FAILED");
   });
 
+  it("treats missing or non-number latest prices as zero during conflict checks", async function () {
+    vi.mocked(getBundle).mockResolvedValue({
+      id: 30,
+      name: "Summer",
+      ratePlans: [
+        {
+          ratePlanId: 20,
+          name: "Breakfast",
+          roomRateBundles: [
+            {
+              ratePlanId: 20,
+              roomTypeProviderId: 10,
+              displayPrice: "not-a-number",
+            },
+          ],
+        },
+      ],
+    });
+    const proposal = await createPendingProposal({
+      payload: {
+        hotelId: 1,
+        bundleId: 30,
+        items: [
+          {
+            date: "2026-08-01",
+            roomTypeProviderId: 10,
+            price: { ratePlanId: 20, displayPrice: 7500000 },
+          },
+        ],
+      },
+      oldValues: [
+        {
+          rowId: "row-1",
+          date: "2026-08-01",
+          roomTypeProviderId: 10,
+          ratePlanId: 20,
+          field: "displayPrice",
+          value: 0,
+        },
+      ],
+    });
+
+    await executeConfirmedProposal(proposal.id);
+
+    expect(upsertPriceCapacity).toHaveBeenCalledWith(
+      expect.any(Object),
+      proposal.payload,
+    );
+    const updated = await prisma.actionProposal.findUnique({
+      where: { id: proposal.id },
+    });
+    expect(updated?.status).toBe("EXECUTED");
+  });
+
   it("rejects a proposal without calling Lamasoo", async function () {
     const proposal = await createPendingProposal({
       payload: { hotelId: 1, bundleId: 30, items: [] },
@@ -170,6 +224,7 @@ async function createPendingProposal(input: {
       affectedRowsCount: input.payload.items.length,
       assumptionsJson: "[]",
       warningsJson: "[]",
+      validationIssuesJson: "[]",
       diffsJson: "[]",
       lamasooPayloadJson: stringifyJson(input.payload),
       toolCallsJson: "[]",

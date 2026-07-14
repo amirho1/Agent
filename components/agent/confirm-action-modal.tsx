@@ -21,11 +21,12 @@ export function ConfirmActionModal({
           Confirm Lamasoo Action
         </h2>
         <p className="mt-2 text-sm text-slate-300">
-          This will send {proposal.affectedRowsCount} Lamasoo update items for hotel{" "}
-          {proposal.hotelId}.
+          This will send {proposal.affectedRowsCount} Lamasoo update items for
+          hotel {proposal.hotelId}.
         </p>
         <p className="mt-2 text-sm text-slate-500">
-          The server will re-check current Lamasoo values before sending the update.
+          The server will re-check current Lamasoo values before sending the
+          update.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button

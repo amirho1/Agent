@@ -175,31 +175,40 @@ async function processRateUpdateText(
   });
 
   try {
-    await createAgentStep(chatId, agentRun.id, 1, "Read user rate update request");
+    await createAgentStep(
+      chatId,
+      agentRun.id,
+      1,
+      "Read user rate update request",
+    );
     const prepared = await prepareLamasooRateUpdateProposal(config, sourceText);
     await persistPreparedSteps(chatId, agentRun.id, prepared, 2);
     await persistToolCalls(chatId, agentRun.id, prepared.toolCalls);
     await persistActionProposal(chatId, agentRun.id, prepared);
-    logOperationEvent("agent.ai_interaction", "agent.ai_interaction.completed", {
-      chatId,
-      agentRunId: agentRun.id,
-      userPrompt: sourceText,
-      systemPromptVersion: "lamasoo-rate-update-v1",
-      selectedModel: config.agentModel || null,
-      toolCalls: prepared.toolCalls,
-      toolInputs: prepared.toolCalls.map((toolCall) => ({
-        name: toolCall.name,
-        input: toolCall.input,
-      })),
-      toolOutputs: prepared.toolCalls.map((toolCall) => ({
-        name: toolCall.name,
-        result: toolCall.result ?? toolCall.resultSummary,
-        status: toolCall.status,
-      })),
-      tokenUsage: null,
-      executionTimeMs: getDurationMs(agentStartedAt),
-      proposal: prepared.proposal,
-    });
+    logOperationEvent(
+      "agent.ai_interaction",
+      "agent.ai_interaction.completed",
+      {
+        chatId,
+        agentRunId: agentRun.id,
+        userPrompt: sourceText,
+        systemPromptVersion: "lamasoo-rate-update-v1",
+        selectedModel: config.agentModel || null,
+        toolCalls: prepared.toolCalls,
+        toolInputs: prepared.toolCalls.map((toolCall) => ({
+          name: toolCall.name,
+          input: toolCall.input,
+        })),
+        toolOutputs: prepared.toolCalls.map((toolCall) => ({
+          name: toolCall.name,
+          result: toolCall.result ?? toolCall.resultSummary,
+          status: toolCall.status,
+        })),
+        tokenUsage: null,
+        executionTimeMs: getDurationMs(agentStartedAt),
+        proposal: prepared.proposal,
+      },
+    );
 
     return getChatDetails(chatId);
   } catch (error) {
@@ -259,6 +268,7 @@ async function persistActionProposal(
       affectedRowsCount: prepared.proposal.affectedRowsCount,
       assumptionsJson: stringifyJson(prepared.proposal.assumptions),
       warningsJson: stringifyJson(prepared.proposal.warnings),
+      validationIssuesJson: stringifyJson(prepared.proposal.validationIssues),
       diffsJson: stringifyJson(prepared.proposal.diffs),
       lamasooPayloadJson: stringifyJson(prepared.proposal.lamasooPayload),
       toolCallsJson: stringifyJson(prepared.proposal.toolCalls),
@@ -474,6 +484,7 @@ function serializeActionProposal(proposal: {
   affectedRowsCount: number;
   assumptionsJson: string;
   warningsJson: string;
+  validationIssuesJson: string;
   diffsJson: string;
   lamasooPayloadJson: string;
   createdAt: Date;
@@ -487,6 +498,11 @@ function serializeActionProposal(proposal: {
     createdAt: Date;
   }>;
 }): ActionProposalDto {
+  const lamasooPayload = parseJson<AgentActionProposal["lamasooPayload"]>(
+    proposal.lamasooPayloadJson,
+    { hotelId: "", items: [] },
+  );
+
   return {
     id: proposal.id,
     type: proposal.type,
@@ -494,14 +510,16 @@ function serializeActionProposal(proposal: {
     title: proposal.title,
     summary: proposal.summary,
     hotelId: proposal.hotelId,
+    bundleId: lamasooPayload.bundleId,
     affectedRowsCount: proposal.affectedRowsCount,
     assumptions: parseJson<string[]>(proposal.assumptionsJson, []),
     warnings: parseJson<string[]>(proposal.warningsJson, []),
-    diffs: parseJson<ActionProposalDto["diffs"]>(proposal.diffsJson, []),
-    lamasooPayload: parseJson<AgentActionProposal["lamasooPayload"]>(
-      proposal.lamasooPayloadJson,
-      { hotelId: "", items: [] },
+    validationIssues: parseJson<ActionProposalDto["validationIssues"]>(
+      proposal.validationIssuesJson,
+      [],
     ),
+    diffs: parseJson<ActionProposalDto["diffs"]>(proposal.diffsJson, []),
+    lamasooPayload,
     createdAt: proposal.createdAt.toISOString(),
     updatedAt: proposal.updatedAt.toISOString(),
     executions: proposal.executions.map(serializeActionExecution),

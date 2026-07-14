@@ -32,7 +32,9 @@ export function ChatInput({
       onSubmit={(event) => void handleSubmit(event)}
       className="flex items-end gap-2 border-t border-slate-800 bg-slate-950 p-3"
     >
-      {onUpload ? <FileUploader onUpload={onUpload} disabled={disabled} /> : null}
+      {onUpload ? (
+        <FileUploader onUpload={onUpload} disabled={disabled} />
+      ) : null}
       <textarea
         value={message}
         onChange={(event) => setMessage(event.target.value)}

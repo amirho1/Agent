@@ -152,9 +152,7 @@ export function createDailyLogStream(
   });
 }
 
-export async function closeLoggingSystem(
-  system: LoggingSystem,
-): Promise<void> {
+export async function closeLoggingSystem(system: LoggingSystem): Promise<void> {
   await Promise.all(
     Object.values(system.streams).map(
       (stream) =>

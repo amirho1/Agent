@@ -52,7 +52,9 @@ describe.sequential("Pino logging", function () {
     resetLoggingSystemForTests();
     vi.unstubAllGlobals();
     await Promise.all(
-      tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
+      tempDirs
+        .splice(0)
+        .map((dir) => rm(dir, { force: true, recursive: true })),
     );
   });
 
@@ -83,7 +85,9 @@ describe.sequential("Pino logging", function () {
       expect.arrayContaining([
         expect.objectContaining({
           msg: "error log",
-          err: expect.objectContaining({ stack: expect.stringContaining("boom") }),
+          err: expect.objectContaining({
+            stack: expect.stringContaining("boom"),
+          }),
         }),
       ]),
     );
@@ -467,6 +471,7 @@ async function createPendingProposal(input: {
       affectedRowsCount: input.payload.items.length,
       assumptionsJson: "[]",
       warningsJson: "[]",
+      validationIssuesJson: "[]",
       diffsJson: "[]",
       lamasooPayloadJson: stringifyJson(input.payload),
       toolCallsJson: "[]",

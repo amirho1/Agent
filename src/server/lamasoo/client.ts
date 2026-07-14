@@ -10,6 +10,14 @@ import type {
 import type { ServerConfig } from "../config";
 import { assertLamasooConfig, assertLamasooExchangeConfig } from "../config";
 import { fetchJson } from "../http";
+import {
+  bundleDetailsSchema,
+  bundleSummaryListSchema,
+  hotelListSchema,
+  parseLamasooResponse,
+  ratePlanListSchema,
+  roomTypeProviderListSchema,
+} from "./schemas";
 
 export function buildLamasooExchangeHeaders(
   config: ServerConfig,
@@ -36,22 +44,33 @@ export function buildLamasooBearerHeaders(
 }
 
 export async function listHotels(config: ServerConfig): Promise<Hotel[]> {
-  return fetchJson<Hotel[]>(`${config.lamasooBaseUrl}/api/exchange/hotels`, {
-    targetService: "lamasoo",
-    headers: buildLamasooExchangeHeaders(config),
-  });
+  const response = await fetchJson<unknown>(
+    `${config.lamasooBaseUrl}/api/exchange/hotels`,
+    {
+      targetService: "lamasoo",
+      headers: buildLamasooExchangeHeaders(config),
+    },
+  );
+
+  return parseLamasooResponse(hotelListSchema, response, "hotel list");
 }
 
 export async function listRoomTypes(
   config: ServerConfig,
   hotelId: EntityId,
 ): Promise<RoomTypeProvider[]> {
-  return fetchJson<RoomTypeProvider[]>(
+  const response = await fetchJson<unknown>(
     `${config.lamasooBaseUrl}/api/exchange/room-type-providers`,
     {
       targetService: "lamasoo",
       headers: buildLamasooExchangeHeaders(config, hotelId),
     },
+  );
+
+  return parseLamasooResponse(
+    roomTypeProviderListSchema,
+    response,
+    "room type provider list",
   );
 }
 
@@ -59,23 +78,30 @@ export async function listRatePlans(
   config: ServerConfig,
   hotelId: EntityId,
 ): Promise<RatePlan[]> {
-  return fetchJson<RatePlan[]>(
+  const response = await fetchJson<unknown>(
     `${config.lamasooBaseUrl}/api/exchange/rate-plans`,
     {
       targetService: "lamasoo",
       headers: buildLamasooExchangeHeaders(config, hotelId),
     },
   );
+
+  return parseLamasooResponse(ratePlanListSchema, response, "rate plan list");
 }
 
 export async function listBundles(
   config: ServerConfig,
   hotelId: EntityId,
 ): Promise<BundleSummary[]> {
-  return fetchJson<BundleSummary[]>(`${config.lamasooBaseUrl}/api/bundle`, {
-    targetService: "lamasoo",
-    headers: buildLamasooBearerHeaders(config, hotelId),
-  });
+  const response = await fetchJson<unknown>(
+    `${config.lamasooBaseUrl}/api/bundle`,
+    {
+      targetService: "lamasoo",
+      headers: buildLamasooBearerHeaders(config, hotelId),
+    },
+  );
+
+  return parseLamasooResponse(bundleSummaryListSchema, response, "bundle list");
 }
 
 export async function getBundle(
@@ -83,13 +109,63 @@ export async function getBundle(
   hotelId: EntityId,
   bundleId: EntityId,
 ): Promise<BundleDetails> {
-  return fetchJson<BundleDetails>(
+  const response = await fetchJson<unknown>(
     `${config.lamasooBaseUrl}/api/bundle/${bundleId}`,
     {
       targetService: "lamasoo",
       headers: buildLamasooBearerHeaders(config, hotelId),
     },
   );
+
+  const bundle = parseLamasooResponse(
+    bundleDetailsSchema,
+    response,
+    "bundle details",
+  );
+  assertBundleDetailsBelongToHotel(bundle, hotelId);
+
+  return bundle;
+}
+
+/**
+ * Ensure nested bundle detail room records match the requested hotel when the API provides hotel IDs.
+ * @param bundle - Bundle details returned by Lamasoo.
+ * @param hotelId - Requested hotel ID.
+ */
+function assertBundleDetailsBelongToHotel(
+  bundle: BundleDetails,
+  hotelId: EntityId,
+): void {
+  if (
+    bundle.hotelProvider?.hotelId !== undefined &&
+    !isSameEntityId(bundle.hotelProvider.hotelId, hotelId)
+  ) {
+    throw new Error(
+      `Invalid Lamasoo bundle details response: bundle ${String(bundle.id)} belongs to hotel ${String(bundle.hotelProvider.hotelId)}, not ${String(hotelId)}.`,
+    );
+  }
+
+  for (const ratePlan of bundle.ratePlans) {
+    for (const roomRateBundle of ratePlan.roomRateBundles) {
+      const roomHotelId = roomRateBundle.roomTypeProvider?.roomType?.hotelId;
+
+      if (roomHotelId !== undefined && !isSameEntityId(roomHotelId, hotelId)) {
+        throw new Error(
+          `Invalid Lamasoo bundle details response: room ${String(roomRateBundle.roomTypeProviderId)} belongs to hotel ${String(roomHotelId)}, not ${String(hotelId)}.`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Compare entity IDs without assuming Lamasoo always returns the same primitive type.
+ * @param left - First entity ID.
+ * @param right - Second entity ID.
+ * @returns True when both IDs represent the same value.
+ */
+function isSameEntityId(left: EntityId, right: EntityId): boolean {
+  return String(left) === String(right);
 }
 
 export async function upsertPriceCapacity(

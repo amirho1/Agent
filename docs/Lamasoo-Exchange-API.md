@@ -93,7 +93,14 @@ Header: hotel-id: {{hotelId}}
 
 ```json
 [
-  { "id": 18, "hotelProviderId": 24, "name": "نوزاد", "from": 0, "to": 1.99, "requiresBed": false },
+  {
+    "id": 18,
+    "hotelProviderId": 24,
+    "name": "نوزاد",
+    "from": 0,
+    "to": 1.99,
+    "requiresBed": false
+  },
   {
     "id": 19,
     "hotelProviderId": 24,
@@ -102,7 +109,14 @@ Header: hotel-id: {{hotelId}}
     "to": 3.99,
     "requiresBed": false
   },
-  { "id": 20, "hotelProviderId": 24, "name": "کودک", "from": 4, "to": 5.99, "requiresBed": false }
+  {
+    "id": 20,
+    "hotelProviderId": 24,
+    "name": "کودک",
+    "from": 4,
+    "to": 5.99,
+    "requiresBed": false
+  }
 ]
 ```
 

@@ -16,7 +16,9 @@ const banned = [
 describe("Lamasoo-only regression guard", function () {
   it("keeps active app/server/component code free of dummy integration references", async function () {
     const files = (
-      await Promise.all(roots.map((root) => listFiles(join(process.cwd(), root))))
+      await Promise.all(
+        roots.map((root) => listFiles(join(process.cwd(), root))),
+      )
     ).flat();
     const offenders: string[] = [];
 

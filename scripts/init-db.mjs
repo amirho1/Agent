@@ -28,6 +28,13 @@ const migrations = [
       "prisma/migrations/20260709211000_add_read_results/migration.sql",
     ),
   },
+  {
+    name: "20260713220000_add_action_proposal_validation_issues",
+    path: join(
+      rootDir,
+      "prisma/migrations/20260713220000_add_action_proposal_validation_issues/migration.sql",
+    ),
+  },
 ];
 
 for (const migration of migrations) {

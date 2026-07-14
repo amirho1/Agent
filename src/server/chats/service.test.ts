@@ -29,6 +29,7 @@ const sample = `
 
 describe("chat Lamasoo proposal flow", function () {
   beforeEach(function () {
+    vi.clearAllMocks();
     vi.mocked(listHotels).mockResolvedValue([{ id: 1, name: "Aria Hotel" }]);
     vi.mocked(listRoomTypes).mockResolvedValue([
       { id: 10, name: "Deluxe Twin" },
@@ -36,10 +37,13 @@ describe("chat Lamasoo proposal flow", function () {
     vi.mocked(listRatePlans).mockResolvedValue([
       { id: 20, name: "Breakfast", mealType: "BB" },
     ]);
-    vi.mocked(listBundles).mockResolvedValue([{ id: 30, name: "Summer" }]);
+    vi.mocked(listBundles).mockResolvedValue([
+      { id: 30, name: "Summer", hotelProvider: { hotelId: 1 } },
+    ]);
     vi.mocked(getBundle).mockResolvedValue({
       id: 30,
       name: "Summer",
+      hotelProvider: { hotelId: 1 },
       ratePlans: [
         {
           ratePlanId: 20,
@@ -49,6 +53,11 @@ describe("chat Lamasoo proposal flow", function () {
               ratePlanId: 20,
               roomTypeProviderId: 10,
               displayPrice: 7000000,
+              roomTypeProvider: {
+                id: 10,
+                name: "Deluxe Twin",
+                roomType: { hotelId: 1 },
+              },
             },
           ],
         },
@@ -63,9 +72,14 @@ describe("chat Lamasoo proposal flow", function () {
     expect(nextDetails.actionProposals[0]).toMatchObject({
       type: "LAMASOO_RATE_PLAN_PRICE_UPDATE",
       status: "PENDING",
+      hotelId: "1",
+      bundleId: 30,
       affectedRowsCount: 1,
+      validationIssues: [],
     });
-    expect(nextDetails.actionProposals[0].lamasooPayload.items[0]).toMatchObject({
+    expect(
+      nextDetails.actionProposals[0].lamasooPayload.items[0],
+    ).toMatchObject({
       date: "2026-08-01",
       roomTypeProviderId: 10,
       price: { ratePlanId: 20, displayPrice: 7500000 },

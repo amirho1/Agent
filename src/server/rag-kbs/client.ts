@@ -51,7 +51,8 @@ export async function searchKnowledgeBase(
     },
     async () => {
       const knowledgeBaseId =
-        config.ragKbsKnowledgeBaseId || (await getDefaultKnowledgeBaseId(config));
+        config.ragKbsKnowledgeBaseId ||
+        (await getDefaultKnowledgeBaseId(config));
 
       logOperationEvent("vector.search", "vector.search.started", {
         tenantId: config.ragKbsTenantId,
@@ -131,11 +132,15 @@ async function getDefaultKnowledgeBaseId(
       `No active RAG-KBS knowledge base was found for tenant ${config.ragKbsTenantId}.`,
     );
   }
-  logOperationEvent("rag.knowledge_base", "rag.default_knowledge_base.selected", {
-    tenantId: config.ragKbsTenantId,
-    knowledgeBaseId: knowledgeBase.id,
-    name: knowledgeBase.name,
-  });
+  logOperationEvent(
+    "rag.knowledge_base",
+    "rag.default_knowledge_base.selected",
+    {
+      tenantId: config.ragKbsTenantId,
+      knowledgeBaseId: knowledgeBase.id,
+      name: knowledgeBase.name,
+    },
+  );
 
   return knowledgeBase.id;
 }

@@ -135,6 +135,7 @@ model ActionProposal {
   affectedRowsCount Int
   assumptionsJson   String
   warningsJson      String
+  validationIssuesJson String          @default("[]")
   diffsJson         String
   lamasooPayloadJson String           @map("pmsPayloadJson")
   toolCallsJson     String

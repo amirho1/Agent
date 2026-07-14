@@ -83,7 +83,8 @@ export function parseRateSheetText(text: string): {
   };
 
   const tableRows = parseRowsFromTables(tables, issues);
-  const fallbackRows = tableRows.length === 0 ? parseRowsFromPlainText(text) : [];
+  const fallbackRows =
+    tableRows.length === 0 ? parseRowsFromPlainText(text) : [];
   extractedRateSheet.rows = tableRows.length > 0 ? tableRows : fallbackRows;
 
   extractedRateSheet.from = normalizeDate(extractedRateSheet.from);
@@ -148,7 +149,9 @@ function parseRowsFromTables(
   issues: ValidationIssue[],
 ): ExtractedRateSheetRow[] {
   return tables.flatMap((table) => {
-    const headers = table.headers.map((header) => rowAliases[normalizeKey(header)]);
+    const headers = table.headers.map(
+      (header) => rowAliases[normalizeKey(header)],
+    );
     if (!headers.includes("roomName") || !headers.includes("ratePlanName")) {
       return [];
     }
@@ -178,13 +181,22 @@ function parseRowsFromPlainText(text: string): ExtractedRateSheetRow[] {
         extractValue(line, /\b(RO|BB|HB|FB|UAI)\b/i) ??
         "",
       boardPrice: parseOptionalNumber(
-        extractValue(line, /(?:boardPrice|board\s*price|قیمت\s*برد)\s*[:=]\s*([^,;]+)/i),
+        extractValue(
+          line,
+          /(?:boardPrice|board\s*price|قیمت\s*برد)\s*[:=]\s*([^,;]+)/i,
+        ),
       ),
       displayPrice: parseOptionalNumber(
-        extractValue(line, /(?:displayPrice|display\s*price|قیمت\s*نمایش)\s*[:=]\s*([^,;]+)/i),
+        extractValue(
+          line,
+          /(?:displayPrice|display\s*price|قیمت\s*نمایش)\s*[:=]\s*([^,;]+)/i,
+        ),
       ),
       payablePrice: parseOptionalNumber(
-        extractValue(line, /(?:payablePrice|payable\s*price|قیمت\s*قابل\s*پرداخت)\s*[:=]\s*([^,;]+)/i),
+        extractValue(
+          line,
+          /(?:payablePrice|payable\s*price|قیمت\s*قابل\s*پرداخت)\s*[:=]\s*([^,;]+)/i,
+        ),
       ),
       genericPrice: parseOptionalNumber(
         extractValue(line, /(?:^|[,;])\s*(?:price|قیمت)\s*[:=]\s*([^,;]+)/i),
@@ -236,8 +248,7 @@ function createExtractedRow(
       return;
     }
 
-    row[header as "boardPrice" | "displayPrice" | "payablePrice"] =
-      numberValue;
+    row[header as "boardPrice" | "displayPrice" | "payablePrice"] = numberValue;
   });
 
   return row;
@@ -339,7 +350,11 @@ function parseMarkdownTables(text: string): ParsedTable[] {
   while (index < lines.length) {
     const header = lines[index]?.trim();
     const separator = lines[index + 1]?.trim();
-    if (!header?.includes("|") || !separator || !isMarkdownSeparator(separator)) {
+    if (
+      !header?.includes("|") ||
+      !separator ||
+      !isMarkdownSeparator(separator)
+    ) {
       index += 1;
       continue;
     }
@@ -400,7 +415,9 @@ export function normalizeDate(value: string | undefined): string | undefined {
   ].join("-");
 }
 
-export function parseOptionalNumber(value: string | undefined): number | undefined {
+export function parseOptionalNumber(
+  value: string | undefined,
+): number | undefined {
   if (!value?.trim()) {
     return undefined;
   }

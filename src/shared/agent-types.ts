@@ -28,6 +28,20 @@ export type RoomTypeProvider = {
   name: string;
   defaultCount?: number;
   isActive?: boolean;
+  roomType?: RoomType;
+  [key: string]: unknown;
+};
+
+export type RoomType = {
+  id?: EntityId;
+  name?: string;
+  description?: string;
+  capacity?: number;
+  extraCapacity?: number;
+  hotelId?: EntityId;
+  isActive?: boolean;
+  count?: number;
+  maxChildrenWithoutBed?: number;
   [key: string]: unknown;
 };
 
@@ -47,6 +61,18 @@ export type BundleSummary = {
   name: string;
   type?: string;
   hotelProviderId?: EntityId;
+  hotelProvider?: HotelProvider;
+  roomCount?: number;
+  [key: string]: unknown;
+};
+
+export type HotelProvider = {
+  id?: EntityId;
+  hotelId?: EntityId;
+  providerId?: EntityId;
+  isActive?: boolean;
+  isDeleted?: boolean;
+  hasChildrenPolicy?: boolean;
   [key: string]: unknown;
 };
 
@@ -55,10 +81,13 @@ export type RoomRateBundle = {
   bundleId?: EntityId;
   ratePlanId: EntityId;
   roomTypeProviderId: EntityId;
-  boardPrice?: number;
-  displayPrice?: number;
-  payablePrice?: number;
+  boardPrice?: unknown;
+  displayPrice?: unknown;
+  payablePrice?: unknown;
+  extraGuestPrice?: number;
   roomTypeProvider?: RoomTypeProvider;
+  priceRates?: unknown[];
+  childrenPrices?: unknown[];
   [key: string]: unknown;
 };
 
@@ -67,6 +96,7 @@ export type BundleRatePlan = {
   name: string;
   mealType?: string;
   currency?: string;
+  extraGuestPrice?: number;
   roomRateBundles: RoomRateBundle[];
   [key: string]: unknown;
 };
@@ -169,6 +199,7 @@ export type AgentActionProposal = {
   affectedRowsCount: number;
   assumptions: string[];
   warnings: string[];
+  validationIssues: ValidationIssue[];
   toolCalls: {
     name: string;
     input: unknown;

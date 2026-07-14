@@ -45,9 +45,11 @@ export type ActionProposalDto = {
   title: string;
   summary: string;
   hotelId: string;
+  bundleId?: AgentActionProposal["bundleId"];
   affectedRowsCount: number;
   assumptions: string[];
   warnings: string[];
+  validationIssues: AgentActionProposal["validationIssues"];
   diffs: AgentActionDiff[];
   lamasooPayload: AgentActionProposal["lamasooPayload"];
   createdAt: string;
