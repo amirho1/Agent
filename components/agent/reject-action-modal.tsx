@@ -19,7 +19,8 @@ export function RejectActionModal({
       <div className="w-full max-w-lg rounded-lg border border-slate-800 bg-slate-950 p-5 shadow-xl">
         <h2 className="text-lg font-semibold text-white">Reject Proposal</h2>
         <p className="mt-2 text-sm text-slate-300">
-          {proposal.affectedRowsCount} Lamasoo update items will be discarded.
+          {proposal.affectedRowsCount} daily Lamasoo update items will be
+          discarded.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button

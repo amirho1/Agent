@@ -42,6 +42,12 @@ export const hotelSchema: z.ZodType<Hotel> = z
   })
   .passthrough();
 
+export const currentHotelSchema: z.ZodType<Hotel> = z.object({
+  id: entityIdSchema,
+  name: z.string(),
+  isActive: z.boolean().optional(),
+});
+
 export const roomTypeProviderSchema: z.ZodType<RoomTypeProvider> = z
   .object({
     id: entityIdSchema,

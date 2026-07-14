@@ -5,6 +5,7 @@ import {
   buildLamasooBearerHeaders,
   buildLamasooExchangeHeaders,
   getBundle,
+  getCurrentHotel,
   listHotels,
   listBundles,
   listRatePlans,
@@ -53,6 +54,34 @@ describe("Lamasoo client", function () {
     ).toEqual({
       Authorization: "Bearer jwt-token",
       "hotel-id": "12",
+    });
+  });
+
+  it("fetches the current CRS hotel with Bearer auth and strips extra fields", async function () {
+    mockFetchJsonQueue([
+      {
+        body: {
+          id: 2900,
+          name: "هتل دمو arwerk",
+          isActive: true,
+          createdAt: "2026-07-08T10:43:26.638Z",
+          setting: { theme: "dark" },
+        },
+      },
+    ]);
+
+    await expect(getCurrentHotel(config)).resolves.toEqual({
+      id: 2900,
+      name: "هتل دمو arwerk",
+      isActive: true,
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://whale.lamasoo.com/api/hotel/my/data",
+    );
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+      Authorization: "Bearer jwt-token",
     });
   });
 

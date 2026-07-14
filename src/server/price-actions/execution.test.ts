@@ -219,7 +219,7 @@ async function createPendingProposal(input: {
       type: "LAMASOO_RATE_PLAN_PRICE_UPDATE",
       status: "PENDING",
       title: "Review Lamasoo rate-plan price update",
-      summary: "1 Lamasoo price update item prepared for review.",
+      summary: "1 daily Lamasoo update item prepared for review.",
       hotelId: String(input.payload.hotelId),
       affectedRowsCount: input.payload.items.length,
       assumptionsJson: "[]",

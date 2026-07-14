@@ -107,6 +107,8 @@ export type BundleDetails = BundleSummary & {
 
 export type ExtractedRateSheetRow = {
   rowId: string;
+  from?: string;
+  to?: string;
   roomName: string;
   ratePlanName: string;
   boardPrice?: number;

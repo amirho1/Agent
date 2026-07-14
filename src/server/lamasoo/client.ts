@@ -13,6 +13,7 @@ import { fetchJson } from "../http";
 import {
   bundleDetailsSchema,
   bundleSummaryListSchema,
+  currentHotelSchema,
   hotelListSchema,
   parseLamasooResponse,
   ratePlanListSchema,
@@ -53,6 +54,18 @@ export async function listHotels(config: ServerConfig): Promise<Hotel[]> {
   );
 
   return parseLamasooResponse(hotelListSchema, response, "hotel list");
+}
+
+export async function getCurrentHotel(config: ServerConfig): Promise<Hotel> {
+  const response = await fetchJson<unknown>(
+    `${config.lamasooBaseUrl}/api/hotel/my/data`,
+    {
+      targetService: "lamasoo",
+      headers: buildLamasooBearerHeaders(config),
+    },
+  );
+
+  return parseLamasooResponse(currentHotelSchema, response, "current hotel");
 }
 
 export async function listRoomTypes(

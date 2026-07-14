@@ -105,11 +105,10 @@ export default function Home() {
               <Bot className="size-6" />
             </div>
             <h1 className="text-2xl font-semibold text-white">
-              Lamasoo Rate Update Agent
+              Lamasoo Agent
             </h1>
             <p className="mt-2 text-sm text-slate-400">
-              Rate-plan price updates are prepared for review before any Lamasoo
-              write.
+              Do actions via agent 
             </p>
             <div className="mt-6">
               {error ? <ErrorState message={error} /> : null}

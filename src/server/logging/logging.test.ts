@@ -19,8 +19,8 @@ import { getRequestId, runWithRequestContext } from "./context";
 import { withApiLogging } from "./http-route";
 import {
   getBundle,
+  getCurrentHotel,
   listBundles,
-  listHotels,
   listRatePlans,
   listRoomTypes,
   upsertPriceCapacity,
@@ -31,8 +31,8 @@ import { executeConfirmedProposal } from "../price-actions/execution";
 
 vi.mock("../lamasoo/client", () => ({
   getBundle: vi.fn(),
+  getCurrentHotel: vi.fn(),
   listBundles: vi.fn(),
-  listHotels: vi.fn(),
   listRatePlans: vi.fn(),
   listRoomTypes: vi.fn(),
   upsertPriceCapacity: vi.fn(),
@@ -419,7 +419,10 @@ async function readLogEntries(
 }
 
 function mockLamasooClients(): void {
-  vi.mocked(listHotels).mockResolvedValue([{ id: 1, name: "Aria Hotel" }]);
+  vi.mocked(getCurrentHotel).mockResolvedValue({
+    id: 1,
+    name: "Aria Hotel",
+  });
   vi.mocked(listRoomTypes).mockResolvedValue([{ id: 10, name: "Deluxe Twin" }]);
   vi.mocked(listRatePlans).mockResolvedValue([
     { id: 20, name: "Breakfast", mealType: "BB" },
@@ -466,7 +469,7 @@ async function createPendingProposal(input: {
       type: "LAMASOO_RATE_PLAN_PRICE_UPDATE",
       status: "PENDING",
       title: "Review Lamasoo rate-plan price update",
-      summary: "1 Lamasoo price update item prepared for review.",
+      summary: "1 daily Lamasoo update item prepared for review.",
       hotelId: String(input.payload.hotelId),
       affectedRowsCount: input.payload.items.length,
       assumptionsJson: "[]",

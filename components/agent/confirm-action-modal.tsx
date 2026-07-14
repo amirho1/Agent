@@ -21,8 +21,9 @@ export function ConfirmActionModal({
           Confirm Lamasoo Action
         </h2>
         <p className="mt-2 text-sm text-slate-300">
-          This will send {proposal.affectedRowsCount} Lamasoo update items for
-          hotel {proposal.hotelId}.
+          This will send one Lamasoo upsert request containing{" "}
+          {proposal.affectedRowsCount} daily update items for hotel{" "}
+          {proposal.hotelId}.
         </p>
         <p className="mt-2 text-sm text-slate-500">
           The server will re-check current Lamasoo values before sending the

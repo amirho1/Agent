@@ -3,16 +3,16 @@ import { createChat, processUserMessage } from "./service";
 import { storeChatUpload } from "./uploads";
 import {
   getBundle,
+  getCurrentHotel,
   listBundles,
-  listHotels,
   listRatePlans,
   listRoomTypes,
 } from "../lamasoo/client";
 
 vi.mock("../lamasoo/client", () => ({
   getBundle: vi.fn(),
+  getCurrentHotel: vi.fn(),
   listBundles: vi.fn(),
-  listHotels: vi.fn(),
   listRatePlans: vi.fn(),
   listRoomTypes: vi.fn(),
 }));
@@ -30,7 +30,10 @@ const sample = `
 describe("chat Lamasoo proposal flow", function () {
   beforeEach(function () {
     vi.clearAllMocks();
-    vi.mocked(listHotels).mockResolvedValue([{ id: 1, name: "Aria Hotel" }]);
+    vi.mocked(getCurrentHotel).mockResolvedValue({
+      id: 1,
+      name: "Aria Hotel",
+    });
     vi.mocked(listRoomTypes).mockResolvedValue([
       { id: 10, name: "Deluxe Twin" },
     ]);

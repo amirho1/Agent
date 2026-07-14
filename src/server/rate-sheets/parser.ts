@@ -42,13 +42,25 @@ const rowAliases: Record<string, string> = {
   roomname: "roomName",
   roomtype: "roomName",
   ناماتاق: "roomName",
+  نوعاتاق: "roomName",
   اتاق: "roomName",
   rateplan: "ratePlanName",
   rateplanname: "ratePlanName",
   plan: "ratePlanName",
   mealtype: "ratePlanName",
   نرخنامه: "ratePlanName",
+  کدنرخنامه: "ratePlanName",
+  from: "from",
+  start: "from",
+  startdate: "from",
+  ازتاریخ: "from",
+  to: "to",
+  end: "to",
+  enddate: "to",
+  تاتاریخ: "to",
   وعدهغذایی: "ignored",
+  شرحنرخنامه: "ignored",
+  نامپکیج: "ignored",
   boardprice: "boardPrice",
   board: "boardPrice",
   قیمتبرد: "boardPrice",
@@ -65,10 +77,13 @@ const rowAliases: Record<string, string> = {
   قیمتنفراضافه: "ignored",
   count: "ignored",
   capacity: "ignored",
+  ظرفیتپایه: "ignored",
   تعداداتاق: "ignored",
   ظرفیتآنلاین: "ignored",
   تعدادنفرات: "ignored",
   نفراضافهمجاز: "ignored",
+  قیمتکودکباتخت: "ignored",
+  قیمتکودکبدونتخت: "ignored",
 };
 
 export function parseRateSheetText(text: string): {
@@ -92,6 +107,11 @@ export function parseRateSheetText(text: string): {
   if (extractedRateSheet.from && !extractedRateSheet.to) {
     extractedRateSheet.to = extractedRateSheet.from;
   }
+  extractedRateSheet.rows = extractedRateSheet.rows.map((row) => ({
+    ...row,
+    from: normalizeDate(row.from),
+    to: normalizeDate(row.to ?? row.from),
+  }));
 
   validateExtractedSheet(extractedRateSheet, issues);
 
@@ -123,21 +143,37 @@ function parseMetadata(
   }
 
   const linePatterns: Array<[MetadataKey, RegExp]> = [
-    ["hotelName", /(?:hotel|هتل)\s*[:=]\s*(.+)/i],
-    ["title", /(?:rate\s*sheet|bundle|title|نرخنامه)\s*[:=]\s*(.+)/i],
-    ["from", /(?:from|start|از)\s*[:=]\s*([0-9۰-۹٠-٩/-]+)/i],
-    ["to", /(?:to|end|تا)\s*[:=]\s*([0-9۰-۹٠-٩/-]+)/i],
-    ["currency", /(?:currency|واحد\s*پول)\s*[:=]\s*(.+)/i],
+    ["hotelName", /^(?:hotel|هتل)\s*[:=]\s*(.+)$/i],
+    [
+      "title",
+      /^(?:rate\s*sheet|bundle|title|نرخ\s*نامه|نرخنامه)\s*(?::|=)?\s+(.+)$/i,
+    ],
+    [
+      "from",
+      /^(?:from|start(?:\s*date)?|از(?:\s*تاریخ)?)\s*[:=]\s*([0-9۰-۹٠-٩/-]+)$/i,
+    ],
+    [
+      "to",
+      /^(?:to|end(?:\s*date)?|تا(?:\s*تاریخ)?)\s*[:=]\s*([0-9۰-۹٠-٩/-]+)$/i,
+    ],
+    ["currency", /^(?:currency|واحد\s*پول)\s*[:=]\s*(.+)$/i],
   ];
 
-  for (const [key, pattern] of linePatterns) {
-    if (metadata[key]) {
+  for (const line of normalizedText.split(/\r?\n/)) {
+    const normalizedLine = line.trim().replace(/^[-*]\s*/, "");
+    if (!normalizedLine) {
       continue;
     }
 
-    const match = normalizedText.match(pattern);
-    if (match?.[1]) {
-      metadata[key] = match[1].split(/\r?\n/)[0].trim();
+    for (const [key, pattern] of linePatterns) {
+      if (metadata[key]) {
+        continue;
+      }
+
+      const match = normalizedLine.match(pattern);
+      if (match?.[1]) {
+        metadata[key] = match[1].trim();
+      }
     }
   }
 
@@ -237,6 +273,11 @@ function createExtractedRow(
       return;
     }
 
+    if (header === "from" || header === "to") {
+      row[header] = value;
+      return;
+    }
+
     const numberValue = parseOptionalNumber(value);
     if (numberValue === undefined) {
       issues.push({
@@ -258,6 +299,8 @@ function validateExtractedSheet(
   sheet: ExtractedRateSheet,
   issues: ValidationIssue[],
 ): void {
+  const hasRowDateColumns = sheet.rows.some((row) => row.from || row.to);
+
   if (!sheet.hotelName?.trim()) {
     issues.push({
       level: "error",
@@ -274,7 +317,7 @@ function validateExtractedSheet(
     });
   }
 
-  if (!sheet.from || !isIsoDate(sheet.from)) {
+  if ((!sheet.from || !isIsoDate(sheet.from)) && !hasRowDateColumns) {
     issues.push({
       level: "error",
       field: "from",
@@ -282,7 +325,7 @@ function validateExtractedSheet(
     });
   }
 
-  if (!sheet.to || !isIsoDate(sheet.to)) {
+  if ((!sheet.to || !isIsoDate(sheet.to)) && !hasRowDateColumns) {
     issues.push({
       level: "error",
       field: "to",
@@ -313,6 +356,24 @@ function validateExtractedSheet(
         rowId: row.rowId,
         field: "ratePlanName",
         message: "Rate plan is required.",
+      });
+    }
+
+    if (hasRowDateColumns && (!row.from || !isIsoDate(row.from))) {
+      issues.push({
+        level: "error",
+        rowId: row.rowId,
+        field: "from",
+        message: "Start date is required and must be ISO or Jalali.",
+      });
+    }
+
+    if (hasRowDateColumns && (!row.to || !isIsoDate(row.to))) {
+      issues.push({
+        level: "error",
+        rowId: row.rowId,
+        field: "to",
+        message: "End date is required and must be ISO or Jalali.",
       });
     }
 
@@ -402,6 +463,16 @@ export function normalizeDate(value: string | undefined): string | undefined {
   }
 
   const [year, month, day] = parts;
+  if (year >= 0 && year < 100) {
+    const maybeIso = [
+      String(2000 + year).padStart(4, "0"),
+      String(month).padStart(2, "0"),
+      String(day).padStart(2, "0"),
+    ].join("-");
+
+    return isIsoDate(maybeIso) ? maybeIso : normalizedValue;
+  }
+
   if (year > 1700) {
     const maybeIso: unknown = normalizedValue;
     return isIsoDate(maybeIso) ? maybeIso : normalizedValue;

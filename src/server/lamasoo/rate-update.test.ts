@@ -3,16 +3,16 @@ import type { ServerConfig } from "../config";
 import { matchRatePlan, prepareLamasooRateUpdateProposal } from "./rate-update";
 import {
   getBundle,
+  getCurrentHotel,
   listBundles,
-  listHotels,
   listRatePlans,
   listRoomTypes,
 } from "./client";
 
 vi.mock("./client", () => ({
   getBundle: vi.fn(),
+  getCurrentHotel: vi.fn(),
   listBundles: vi.fn(),
-  listHotels: vi.fn(),
   listRatePlans: vi.fn(),
   listRoomTypes: vi.fn(),
 }));
@@ -39,7 +39,10 @@ const config: ServerConfig = {
 describe("Lamasoo rate update proposal", function () {
   beforeEach(function () {
     vi.clearAllMocks();
-    vi.mocked(listHotels).mockResolvedValue([{ id: 1, name: "Aria Hotel" }]);
+    vi.mocked(getCurrentHotel).mockResolvedValue({
+      id: 1,
+      name: "Aria Hotel",
+    });
     vi.mocked(listRoomTypes).mockResolvedValue([
       { id: 10, name: "Deluxe Twin" },
     ]);
@@ -219,10 +222,90 @@ room=Deluxe Twin, ratePlan=BB
     ).toBe(true);
   });
 
-  it("reports a clear hotel issue without cascading room and rate-plan errors", async function () {
-    vi.mocked(listHotels).mockResolvedValue([
-      { id: 2900, name: "هتل دمو arwerk" },
+  it("fails clearly when the current JWT hotel cannot be loaded", async function () {
+    vi.mocked(getCurrentHotel).mockRejectedValue(
+      new Error("Lamasoo current hotel is unavailable"),
+    );
+
+    await expect(
+      prepareLamasooRateUpdateProposal(
+        config,
+        `
+hotel: Aria Hotel
+title: Summer
+from: 2026-08-01
+to: 2026-08-01
+room=Deluxe Twin, ratePlan=BB, displayPrice=7500000
+`,
+      ),
+    ).rejects.toThrow("Lamasoo current hotel is unavailable");
+    expect(listRoomTypes).not.toHaveBeenCalled();
+    expect(listRatePlans).not.toHaveBeenCalled();
+    expect(listBundles).not.toHaveBeenCalled();
+  });
+
+  it("does not duplicate the missing title validation issue", async function () {
+    const prepared = await prepareLamasooRateUpdateProposal(
+      config,
+      `
+from: 2026-08-01
+to: 2026-08-01
+room=Deluxe Twin, ratePlan=BB, displayPrice=7500000
+`,
+    );
+
+    expect(
+      prepared.proposal.validationIssues.filter(
+        (issue) =>
+          issue.field === "title" &&
+          issue.message === "Rate-sheet title or bundle name is required.",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("uses the current JWT hotel and warns when the uploaded hotel name differs", async function () {
+    vi.mocked(getCurrentHotel).mockResolvedValue({
+      id: 2900,
+      name: "هتل دمو arwerk",
+    });
+    vi.mocked(listRoomTypes).mockResolvedValue([
+      { id: 13858, name: "اتاق یک‌تخته اقتصادی" },
     ]);
+    vi.mocked(listRatePlans).mockResolvedValue([
+      {
+        id: 4053,
+        name: "اقامت بدون وعده غذایی",
+        mealType: "RO",
+        currency: "IRR",
+      },
+    ]);
+    vi.mocked(listBundles).mockResolvedValue([
+      { id: 45173, name: "عادی", hotelProvider: { hotelId: 2900 } },
+    ]);
+    vi.mocked(getBundle).mockResolvedValue({
+      id: 45173,
+      name: "عادی",
+      hotelProvider: { hotelId: 2900 },
+      ratePlans: [
+        {
+          ratePlanId: 4053,
+          name: "اقامت بدون وعده غذایی",
+          roomRateBundles: [
+            {
+              ratePlanId: 4053,
+              roomTypeProviderId: 13858,
+              boardPrice: 4,
+              displayPrice: 3,
+              roomTypeProvider: {
+                id: 13858,
+                name: "اتاق یک‌تخته اقتصادی",
+                roomType: { hotelId: 2900 },
+              },
+            },
+          ],
+        },
+      ],
+    });
 
     const prepared = await prepareLamasooRateUpdateProposal(
       config,
@@ -235,29 +318,35 @@ room=اتاق یک‌تخته اقتصادی, ratePlan=RO, displayPrice=18000000
 `,
     );
 
-    expect(prepared.proposal.affectedRowsCount).toBe(0);
-    expect(prepared.proposal.summary).toBe(
-      "1 issue must be resolved before any Lamasoo update can run.",
+    expect(prepared.proposal.validationIssues).toEqual([]);
+    expect(prepared.proposal.warnings).toContain(
+      "Using current Lamasoo hotel هتل دمو arwerk; uploaded sheet says هتل الماسو تستی آریا.",
     );
-    expect(prepared.proposal.validationIssues).toEqual([
+    expect(prepared.proposal.affectedRowsCount).toBe(1);
+    expect(prepared.proposal.hotelId).toBe(2900);
+    expect(prepared.proposal.hotelName).toBe("هتل دمو arwerk");
+    expect(prepared.proposal.bundleId).toBe(45173);
+    expect(listRoomTypes).toHaveBeenCalledWith(config, 2900);
+    expect(listRatePlans).toHaveBeenCalledWith(config, 2900);
+    expect(listBundles).toHaveBeenCalledWith(config, 2900);
+    expect(getBundle).toHaveBeenCalledWith(config, 2900, 45173);
+    expect(prepared.proposal.lamasooPayload.items).toEqual([
       {
-        level: "error",
-        field: "hotelName",
-        message:
-          'Hotel "هتل الماسو تستی آریا" could not be matched confidently.',
+        date: "2026-07-12",
+        roomTypeProviderId: 13858,
+        price: {
+          ratePlanId: 4053,
+          displayPrice: 18000000,
+        },
       },
     ]);
-    expect(prepared.proposal.diffs).toEqual([]);
-    expect(listRoomTypes).not.toHaveBeenCalled();
-    expect(listRatePlans).not.toHaveBeenCalled();
-    expect(listBundles).not.toHaveBeenCalled();
-    expect(prepared.proposal.title).toMatch(/Clarification/);
   });
 
   it("matches live-aligned Persian hotel, bundle, room, and RO rate plan names", async function () {
-    vi.mocked(listHotels).mockResolvedValue([
-      { id: 2900, name: "هتل دمو arwerk" },
-    ]);
+    vi.mocked(getCurrentHotel).mockResolvedValue({
+      id: 2900,
+      name: "هتل دمو arwerk",
+    });
     vi.mocked(listRoomTypes).mockResolvedValue([
       { id: 13858, name: "اتاق یک‌تخته اقتصادی" },
     ]);
@@ -321,6 +410,81 @@ room=اتاق یک‌تخته اقتصادی, ratePlan=RO, boardPrice=16000000, 
           boardPrice: 16000000,
           displayPrice: 18000000,
           payablePrice: 15500000,
+        },
+      },
+    ]);
+  });
+
+  it("uses row-level date ranges from package-style sheets", async function () {
+    vi.mocked(getCurrentHotel).mockResolvedValue({
+      id: 2900,
+      name: "هتل دمو arwerk",
+    });
+    vi.mocked(listRoomTypes).mockResolvedValue([
+      { id: 13858, name: "اتاق یک‌تخته اقتصادی" },
+    ]);
+    vi.mocked(listRatePlans).mockResolvedValue([
+      {
+        id: 4053,
+        name: "اقامت بدون وعده غذایی",
+        mealType: "RO",
+        currency: "IRR",
+      },
+    ]);
+    vi.mocked(listBundles).mockResolvedValue([
+      { id: 45173, name: "عادی", hotelProvider: { hotelId: 2900 } },
+    ]);
+    vi.mocked(getBundle).mockResolvedValue({
+      id: 45173,
+      name: "عادی",
+      hotelProvider: { hotelId: 2900 },
+      ratePlans: [
+        {
+          ratePlanId: 4053,
+          name: "اقامت بدون وعده غذایی",
+          roomRateBundles: [
+            {
+              ratePlanId: 4053,
+              roomTypeProviderId: 13858,
+              displayPrice: 3,
+            },
+          ],
+        },
+      ],
+    });
+
+    const prepared = await prepareLamasooRateUpdateProposal(
+      config,
+      `
+title عادی
+start date: 26-07-14
+end date: 26-07-29
+
+| نام پکیج | از تاریخ | تا تاریخ | نوع اتاق | کد نرخ‌نامه | قیمت نمایش |
+| --- | --- | --- | --- | --- | --- |
+| پکیج تابستان A | 2026-08-01 | 2026-08-02 | اتاق یک‌تخته اقتصادی | RO | 18,000,000 |
+`,
+    );
+
+    expect(prepared.proposal.validationIssues).toEqual([]);
+    expect(prepared.proposal.summary).toBe(
+      "1 source rate row expanded into 2 daily Lamasoo update items for review.",
+    );
+    expect(prepared.proposal.lamasooPayload.items).toEqual([
+      {
+        date: "2026-08-01",
+        roomTypeProviderId: 13858,
+        price: {
+          ratePlanId: 4053,
+          displayPrice: 18000000,
+        },
+      },
+      {
+        date: "2026-08-02",
+        roomTypeProviderId: 13858,
+        price: {
+          ratePlanId: 4053,
+          displayPrice: 18000000,
         },
       },
     ]);

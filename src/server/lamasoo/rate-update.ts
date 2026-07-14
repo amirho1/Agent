@@ -29,8 +29,8 @@ import {
 } from "../logging";
 import {
   getBundle,
+  getCurrentHotel,
   listBundles,
-  listHotels,
   listRatePlans,
   listRoomTypes,
 } from "./client";
@@ -82,7 +82,9 @@ export async function prepareLamasooRateUpdateProposal(
     { label: "Read rate update request" },
   ];
   const toolCalls: StructuredToolCall[] = [];
-  const { extractedRateSheet, issues } = parseRateSheetText(sourceText);
+  const { extractedRateSheet, issues: parserIssues } =
+    parseRateSheetText(sourceText);
+  const issues = ignoreUploadedHotelRequiredIssues(parserIssues);
   logOperationEvent("rate_sheet.parse", "rate_sheet.parsed", {
     sourceText,
     extractedRateSheet,
@@ -97,65 +99,52 @@ export async function prepareLamasooRateUpdateProposal(
     detail: { extractedRateSheet, issues },
   });
 
-  const hotels = await callTool(toolCalls, "lamasoo.listHotels", {}, () =>
-    listHotels(config),
+  const currentHotel = await callTool(
+    toolCalls,
+    "lamasoo.getCurrentHotel",
+    {},
+    () => getCurrentHotel(config),
   );
-  const hotelSelection = selectEntity(
-    extractedRateSheet.hotelName ?? "",
-    hotels,
+
+  const hotelId = currentHotel.id;
+  const [rooms, ratePlans, bundles] = await Promise.all([
+    callTool(toolCalls, "lamasoo.listRoomTypes", { hotelId }, () =>
+      listRoomTypes(config, hotelId),
+    ),
+    callTool(toolCalls, "lamasoo.listRatePlans", { hotelId }, () =>
+      listRatePlans(config, hotelId),
+    ),
+    callTool(toolCalls, "lamasoo.listBundles", { hotelId }, () =>
+      listBundles(config, hotelId),
+    ),
+  ]);
+  const relatedBundles = filterBundlesForHotel(bundles, hotelId);
+  const bundleSelection = selectEntity(
+    extractedRateSheet.title ?? "",
+    relatedBundles,
   );
-  const selectionIssues = createSelectionIssues(
+  const selectionIssues = createBundleSelectionIssues(
     extractedRateSheet,
-    hotelSelection,
+    bundleSelection,
   );
-  let selectedData: SelectedLamasooData = {
-    hotel: hotelSelection.value,
-    rooms: [],
-    ratePlans: [],
+  const selectedData: SelectedLamasooData = {
+    hotel: currentHotel,
+    bundle: bundleSelection.value,
+    rooms,
+    ratePlans,
   };
 
-  if (hotelSelection.value) {
-    const hotelId = hotelSelection.value.id;
-    const [rooms, ratePlans, bundles] = await Promise.all([
-      callTool(toolCalls, "lamasoo.listRoomTypes", { hotelId }, () =>
-        listRoomTypes(config, hotelId),
-      ),
-      callTool(toolCalls, "lamasoo.listRatePlans", { hotelId }, () =>
-        listRatePlans(config, hotelId),
-      ),
-      callTool(toolCalls, "lamasoo.listBundles", { hotelId }, () =>
-        listBundles(config, hotelId),
-      ),
-    ]);
-    const relatedBundles = filterBundlesForHotel(bundles, hotelId);
-    const bundleSelection = selectEntity(
-      extractedRateSheet.title ?? "",
-      relatedBundles,
+  const selectedBundle = bundleSelection.value;
+  if (selectedBundle) {
+    selectedData.bundleDetails = await callTool(
+      toolCalls,
+      "lamasoo.getBundle",
+      { hotelId, bundleId: selectedBundle.id },
+      () => getBundle(config, hotelId, selectedBundle.id),
     );
-    selectedData = {
-      hotel: hotelSelection.value,
-      bundle: bundleSelection.value,
-      rooms,
-      ratePlans,
-    };
-    selectionIssues.push(
-      ...createBundleSelectionIssues(extractedRateSheet, bundleSelection),
-    );
-
-    const selectedBundle = bundleSelection.value;
-    if (selectedBundle) {
-      selectedData.bundleDetails = await callTool(
-        toolCalls,
-        "lamasoo.getBundle",
-        { hotelId, bundleId: selectedBundle.id },
-        () => getBundle(config, hotelId, selectedBundle.id),
-      );
-    }
   }
 
-  const matchedRows = hotelSelection.value
-    ? matchRows(extractedRateSheet, selectedData)
-    : [];
+  const matchedRows = matchRows(extractedRateSheet, selectedData);
   logOperationEvent("rate_sheet.match", "rate_sheet.rows_matched", {
     matchedRows,
     selectedData,
@@ -178,6 +167,9 @@ export async function prepareLamasooRateUpdateProposal(
     validationIssues,
     currentPrices,
   });
+  warnings.push(
+    ...createCurrentHotelWarnings(extractedRateSheet, currentHotel),
+  );
 
   steps.push({
     label: `Matched ${matchedRows.length} rows against Lamasoo rooms and rate plans`,
@@ -200,7 +192,11 @@ export async function prepareLamasooRateUpdateProposal(
       blockingIssues.length > 0
         ? "Clarification required for Lamasoo price update"
         : "Review Lamasoo rate-plan price update",
-    summary: createSummary(payload.items.length, blockingIssues.length),
+    summary: createSummary(
+      matchedRows.length,
+      payload.items.length,
+      blockingIssues.length,
+    ),
     hotelId: selectedData.hotel?.id,
     hotelName: selectedData.hotel?.name ?? extractedRateSheet.hotelName,
     bundleId: selectedData.bundle?.id,
@@ -208,7 +204,7 @@ export async function prepareLamasooRateUpdateProposal(
     affectedRowsCount: payload.items.length,
     assumptions: [
       "Only boardPrice, displayPrice, and payablePrice are executable in this MVP.",
-      "Date ranges are expanded into one Lamasoo upsert item per day.",
+      "Confirm sends one Lamasoo upsert request containing one item per date/room/rate-plan.",
     ],
     warnings,
     validationIssues,
@@ -303,22 +299,32 @@ function selectEntity<T extends { id: EntityId; name: string }>(
   return { value, match };
 }
 
-function createSelectionIssues(
-  sheet: ExtractedRateSheet,
-  hotelSelection: SelectionResult<Hotel>,
+function ignoreUploadedHotelRequiredIssues(
+  issues: ValidationIssue[],
 ): ValidationIssue[] {
-  if (hotelSelection.value) {
+  return issues.filter(
+    (issue) =>
+      !(
+        issue.field === "hotelName" &&
+        issue.message === "Hotel name is required."
+      ),
+  );
+}
+
+function createCurrentHotelWarnings(
+  sheet: ExtractedRateSheet,
+  currentHotel: Hotel,
+): string[] {
+  const uploadedHotelName = sheet.hotelName?.trim();
+  if (
+    !uploadedHotelName ||
+    normalizeName(uploadedHotelName) === normalizeName(currentHotel.name)
+  ) {
     return [];
   }
 
   return [
-    {
-      level: "error",
-      field: "hotelName",
-      message: sheet.hotelName
-        ? `Hotel "${sheet.hotelName}" could not be matched confidently.`
-        : "Hotel name is required.",
-    },
+    `Using current Lamasoo hotel ${currentHotel.name}; uploaded sheet says ${uploadedHotelName}.`,
   ];
 }
 
@@ -326,7 +332,7 @@ function createBundleSelectionIssues(
   sheet: ExtractedRateSheet,
   bundleSelection: SelectionResult<BundleSummary>,
 ): ValidationIssue[] {
-  if (bundleSelection.value) {
+  if (bundleSelection.value || !sheet.title?.trim()) {
     return [];
   }
 
@@ -334,9 +340,7 @@ function createBundleSelectionIssues(
     {
       level: "error",
       field: "title",
-      message: sheet.title
-        ? `Bundle "${sheet.title}" could not be matched confidently.`
-        : "Rate-sheet title or bundle name is required.",
+      message: `Bundle "${sheet.title}" could not be matched confidently.`,
     },
   ];
 }
@@ -364,20 +368,10 @@ function matchRows(
   sheet: ExtractedRateSheet,
   selectedData: SelectedLamasooData,
 ): MatchedRateSheetRow[] {
-  if (!sheet.from || !sheet.to) {
-    return sheet.rows.map((row) => ({
-      ...row,
-      from: sheet.from ?? "",
-      to: sheet.to ?? "",
-      roomMatch: matchName(row.roomName, selectedData.rooms),
-      ratePlanMatch: matchRatePlan(row.ratePlanName, selectedData.ratePlans),
-    }));
-  }
-
   return sheet.rows.map((row) => ({
     ...row,
-    from: sheet.from as string,
-    to: sheet.to as string,
+    from: row.from ?? sheet.from ?? "",
+    to: row.to ?? row.from ?? sheet.to ?? sheet.from ?? "",
     roomMatch: matchName(row.roomName, selectedData.rooms),
     ratePlanMatch: matchRatePlan(row.ratePlanName, selectedData.ratePlans),
   }));
@@ -389,15 +383,6 @@ function validateMatchedRows(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const seen = new Set<string>();
-
-  if (
-    !sheet.from ||
-    !sheet.to ||
-    !isIsoDate(sheet.from) ||
-    !isIsoDate(sheet.to)
-  ) {
-    return issues;
-  }
 
   for (const row of rows) {
     if (row.roomMatch.status !== "matched") {
@@ -425,7 +410,16 @@ function validateMatchedRows(
       continue;
     }
 
-    for (const date of expandDateRange(sheet.from, sheet.to)) {
+    if (
+      !row.from ||
+      !row.to ||
+      !isIsoDate(row.from) ||
+      !isIsoDate(row.to)
+    ) {
+      continue;
+    }
+
+    for (const date of expandDateRange(row.from, row.to)) {
       const key = [
         date,
         row.roomMatch.matchedId,
@@ -656,12 +650,20 @@ function buildRowId(date: string, row: MatchedRateSheetRow): string {
   ].join(":");
 }
 
-function createSummary(itemCount: number, issueCount: number): string {
+function createSummary(
+  sourceRowCount: number,
+  itemCount: number,
+  issueCount: number,
+): string {
   if (issueCount > 0) {
     return `${issueCount} issue${issueCount === 1 ? "" : "s"} must be resolved before any Lamasoo update can run.`;
   }
 
-  return `${itemCount} Lamasoo price update item${itemCount === 1 ? "" : "s"} prepared for review.`;
+  if (sourceRowCount > 0 && sourceRowCount !== itemCount) {
+    return `${sourceRowCount} source rate row${sourceRowCount === 1 ? "" : "s"} expanded into ${itemCount} daily Lamasoo update item${itemCount === 1 ? "" : "s"} for review.`;
+  }
+
+  return `${itemCount} daily Lamasoo update item${itemCount === 1 ? "" : "s"} prepared for review.`;
 }
 
 export function matchRatePlan(

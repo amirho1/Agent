@@ -31,7 +31,10 @@ export function ActionSummaryCard({
           <p className="mt-1 text-sm text-slate-400">{proposal.summary}</p>
         </div>
         <div className="grid grid-cols-2 gap-4 text-right text-sm">
-          <Metric label="Items" value={String(proposal.affectedRowsCount)} />
+          <Metric
+            label="Daily Items"
+            value={String(proposal.affectedRowsCount)}
+          />
           <Metric label="Hotel" value={formatMetricValue(proposal.hotelId)} />
           <Metric label="Bundle" value={formatMetricValue(proposal.bundleId)} />
           <Metric label="Source" value="Lamasoo" />
